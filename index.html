@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Переформатор карточек товаров</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5; color: #222; padding: 24px; min-height: 100vh;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 20px; }
+  .panels { display: flex; gap: 16px; align-items: stretch; }
+  .panel {
+    flex: 1; display: flex; flex-direction: column; gap: 8px;
+  }
+  .panel label { font-weight: 600; font-size: 14px; }
+  textarea {
+    width: 100%; flex: 1; min-height: 400px;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; line-height: 1.5; padding: 12px;
+    border: 1px solid #ddd; border-radius: 8px; resize: vertical;
+    background: #fff;
+  }
+  textarea:focus { outline: none; border-color: #6c5ce7; }
+  .buttons { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+  button {
+    padding: 10px 20px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s;
+  }
+  .btn-primary { background: #6c5ce7; color: #fff; }
+  .btn-primary:hover { background: #5b4bdb; }
+  .btn-secondary { background: #e9e9e9; color: #333; }
+  .btn-secondary:hover { background: #ddd; }
+  .btn-copy { background: #00b894; color: #fff; }
+  .btn-copy:hover { background: #00a381; }
+  .btn-clear { background: #e74c3c; color: #fff; }
+  .btn-clear:hover { background: #c0392b; }
+  .status { font-size: 14px; color: #666; margin-top: 8px; min-height: 20px; }
+  .status.ok { color: #00b894; }
+  .status.err { color: #e74c3c; }
+  .rules { margin-top: 24px; padding: 16px; background: #fff;
+    border: 1px solid #ddd; border-radius: 8px; font-size: 13px; color: #555; }
+  .rules h3 { margin-bottom: 8px; font-size: 15px; color: #333; }
+  .rules ul { padding-left: 20px; }
+  .rules li { margin-bottom: 4px; }
+  @media (max-width: 768px) {
+    .panels { flex-direction: column; }
+    textarea { min-height: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Переформатор карточек товаров</h1>
+<p class="subtitle">Вставьте HTML слева → нажмите «Переформатировать» → скопируйте результат справа</p>
+
+<div class="panels">
+  <div class="panel">
+    <label for="input">Исходный HTML</label>
+    <textarea id="input" placeholder="Вставьте сюда исходный код…"></textarea>
+  </div>
+  <div class="panel">
+    <label for="output">Готовый HTML</label>
+    <textarea id="output" placeholder="Результат появится здесь…" readonly></textarea>
+  </div>
+</div>
+
+<div class="buttons">
+  <button class="btn-primary" onclick="run()">Переформатировать</button>
+  <button class="btn-copy" onclick="copyOutput()">Скопировать результат</button>
+  <button class="btn-secondary" onclick="loadExample()">Загрузить пример</button>
+  <button class="btn-clear" onclick="clearAll()">Очистить</button>
+</div>
+
+<div class="status" id="status"></div>
+
+<div class="rules">
+  <h3>Правила</h3>
+  <ul>
+    <li>Блоки <code>&lt;hl&gt;…&lt;/hl&gt;</code> с карточками товаров заменяются на переформатированный код, без обёртки <code>&lt;hl&gt;</code>.</li>
+    <li>Блоки <code>&lt;hl&gt;</code> без карточек остаются нетронутыми.</li>
+    <li>Карточка <b>с описанием</b> → отдельный <code>&lt;product-card&gt;</code> без обёртки.</li>
+    <li>Карточка <b>без описания, одиночная</b> → <code>&lt;product-card&gt;</code> без обёртки.</li>
+    <li>Карточки <b>без описания, чётное число</b> → один <code>&lt;product-card-grid&gt;</code>.</li>
+    <li>Карточки <b>без описания, нечётное число</b> → чётная часть в <code>&lt;product-card-grid&gt;</code>, последняя — отдельным <code>&lt;product-card&gt;</code>.</li>
+  </ul>
+</div>
+
+<script>
+function reformatHlBlock(hlContent) {
+  let text = hlContent.trim();
+
+  // Удаляем «КАРТОЧКИ ТОВАРОВ»
+  text = text.replace(
+    /<p grade="primary"><coloration[^>]*>КАРТОЧКИ ТОВАРОВ<\/coloration>\s*<\/p>/gs, ''
+  );
+
+  // Удаляем «Картинка (ставит фоторедактор)»
+  text = text.replace(
+    /<p grade="primary">\s*Картинка $ставит фоторедактор$\s*<\/p>/g, ''
+  );
+
+  // Схлопываем пустые строки
+  text = text.replace(/\n\s*\n+/g, '\n').trim();
+
+  // Регулярка для товара
+  const productPattern = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3[^>]*>(.*?)<\/h3>\s*(?:(<p grade="primary">(?:(?!<\/p>|<h3|<image).)*<\/p>)\s*)?<p grade="primary">\s*<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>\s*<\/p>/gs;
+
+  const products = [];
+  let m;
+  while ((m = productPattern.exec(text)) !== null) {
+    const src = m[1].trim();
+    const title = m[2].trim();
+    let descRaw = m[3];
+    const link = m[4].trim();
+    const price = m[5].trim();
+
+    let description = null;
+    if (descRaw) {
+      description = descRaw.replace(/^<p grade="primary">/, '').replace(/<\/p>$/, '').trim();
+    }
+
+    products.push({ src, title, description, link, price });
+  }
+
+  if (products.length === 0) return null;
+
+  const outputBlocks = [];
+  let noDescBuffer = [];
+
+  function flushNoDesc(buffer) {
+    if (buffer.length === 1) {
+      const p = buffer[0];
+      return (
+        "<product-card>\n" +
+        `    <image src="${p.src}" />\n` +
+        `    <title>${p.title}</title>\n` +
+        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        "</product-card>"
+      );
+    }
+
+    const evenCount = buffer.length % 2 === 0 ? buffer.length : buffer.length - 1;
+    const evenPart = buffer.slice(0, evenCount);
+    const oddRemainder = buffer.slice(evenCount);
+
+    let lines = ["<product-card-grid>"];
+    for (const p of evenPart) {
+      lines.push("");
+      lines.push("    <product-card>");
+      lines.push(`        <image src="${p.src}" />`);
+      lines.push(`        <title>${p.title}</title>`);
+      lines.push(`        <price link-shop="${p.link}">${p.price}</price>`);
+      lines.push("    </product-card>");
+    }
+    lines.push("</product-card-grid>");
+    let result = lines.join("\n");
+
+    if (oddRemainder.length > 0) {
+      const p = oddRemainder[0];
+      result +=
+        "\n\n<product-card>\n" +
+        `    <image src="${p.src}" />\n` +
+        `    <title>${p.title}</title>\n` +
+        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        "</product-card>";
+    }
+
+    return result;
+  }
+
+  for (const p of products) {
+    if (p.description) {
+      if (noDescBuffer.length > 0) {
+        outputBlocks.push(flushNoDesc(noDescBuffer));
+        noDescBuffer = [];
+      }
+      outputBlocks.push(
+        "<product-card>\n\n" +
+        `    <image src="${p.src}"></image>\n` +
+        `    <title>${p.title}</title>\n` +
+        `    <description>${p.description}</description>\n` +
+        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        "</product-card>"
+      );
+    } else {
+      noDescBuffer.push(p);
+    }
+  }
+
+  if (noDescBuffer.length > 0) {
+    outputBlocks.push(flushNoDesc(noDescBuffer));
+  }
+
+  return outputBlocks.join("\n\n");
+}
+
+function reformatFullHtml(html) {
+  const hlPattern = /<hl>(.*?)<\/hl>/gs;
+  return html.replace(hlPattern, (match, content) => {
+    const result = reformatHlBlock(content);
+    if (result === null) return match; // нет карточек — оставляем как есть
+    return result;
+  });
+}
+
+function run() {
+  const input = document.getElementById('input').value;
+  const status = document.getElementById('status');
+  try {
+    const result = reformatFullHtml(input);
+    document.getElementById('output').value = result;
+    status.textContent = '✅ Готово!';
+    status.className = 'status ok';
+  } catch (e) {
+    status.textContent = '❌ Ошибка: ' + e.message;
+    status.className = 'status err';
+  }
+}
+
+function copyOutput() {
+  const output = document.getElementById('output');
+  output.select();
+  document.execCommand('copy');
+  const status = document.getElementById('status');
+  status.textContent = '📋 Скопировано в буфер обмена';
+  status.className = 'status ok';
+}
+
+function clearAll() {
+  document.getElementById('input').value = '';
+  document.getElementById('output').value = '';
+  document.getElementById('status').textContent = '';
+}
+
+function loadExample() {
+  document.getElementById('input').value = `<h3 level="2" id="one">🌦️Куртки с влагоотталкивающей пропиткой</h3>
+
+<p grade="primary">Влагоотталкивающая пропитка — специальный состав.</p>
+
+<hl>
+
+    <p grade="primary"><coloration accent="negative">КАРТОЧКИ ТОВАРОВ</coloration>
+    </p>
+
+    <p grade="primary">Картинка (ставит фоторедактор)</p>
+
+    <image src="01-waterproof-jackets-for-man"></image>
+
+    <h3 level="3">Куртка Outventure</h3>
+
+    <p grade="primary"><a href="https://www.sportmaster.ru/product/35988980299/?skuId=81254690299">1 999 ₽</a></p>
+
+    <p grade="primary">Картинка (ставит фоторедактор)</p>
+
+    <image src="02-waterproof-jackets-for-man"></image>
+
+    <h3 level="3">Куртка O'stin</h3>
+
+    <p grade="primary"><a href="http://ostin.com/product/vetrovka-s-kapyushonom/37262290299">2 999 ₽</a></p>
+
+    <p grade="primary">Картинка (ставит фоторедактор)</p>
+
+    <image src="05-waterproof-jackets-for-man"></image>
+
+    <h3 level="3">Куртка Mango</h3>
+
+    <p grade="primary">Массмаркет умело перенимает технологичные особенности горпкор-брендов.</p>
+
+    <p grade="primary"><a href="https://www.lamoda.ru/p/rtlafm953201/clothes-hebymango-vetrovka/">15 999 ₽</a></p>
+</hl>
+
+<h3 level="2" id="two">⛈️ Куртки с мембраной</h3>
+
+<hl>
+
+    <p grade="primary">Этот блок без карточек — он останется нетронутым.</p>
+</hl>`;
+}
+</script>
+</body>
+</html>
