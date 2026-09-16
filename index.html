@@ -82,10 +82,10 @@
   <ul>
     <li>Блоки <code>&lt;hl&gt;…&lt;/hl&gt;</code> с карточками товаров заменяются на переформатированный код, без обёртки <code>&lt;hl&gt;</code>.</li>
     <li>Блоки <code>&lt;hl&gt;</code> без карточек остаются нетронутыми.</li>
-    <li>Карточка <b>с описанием</b> → отдельный <code>&lt;product-card&gt;</code> без обёртки.</li>
-    <li>Карточка <b>без описания, одиночная</b> → <code>&lt;product-card&gt;</code> без обёртки.</li>
-    <li>Карточки <b>без описания, чётное число</b> → один <code>&lt;product-card-grid&gt;</code>.</li>
-    <li>Карточки <b>без описания, нечётное число</b> → чётная часть в <code>&lt;product-card-grid&gt;</code>, последняя — отдельным <code>&lt;product-card&gt;</code>.</li>
+    <li><b>Карточка с описанием</b> → отдельный <code>&lt;product-card&gt;</code>. Все абзацы между заголовком и ценой сохраняются, <code>grade="primary"</code> убирается, остаётся чистый <code>&lt;p&gt;</code>.</li>
+    <li><b>Карточка без описания, одиночная</b> → <code>&lt;product-card&gt;</code> без обёртки.</li>
+    <li><b>Карточки без описания, чётное число</b> → один <code>&lt;product-card-grid&gt;</code>.</li>
+    <li><b>Карточки без описания, нечётное число</b> → чётная часть в <code>&lt;product-card-grid&gt;</code>, последняя — отдельным <code>&lt;product-card&gt;</code>.</li>
   </ul>
 </div>
 
@@ -93,9 +93,9 @@
 function reformatHlBlock(hlContent) {
   let text = hlContent.trim();
 
-  // Удаляем «КАРТОЧКИ ТОВАРОВ»
+  // Удаляем «КАРТОЧКИ ТОВАРОВ» и «КАРТОЧКА ТОВАРА»
   text = text.replace(
-    /<p grade="primary"><coloration[^>]*>КАРТОЧКИ ТОВАРОВ<\/coloration>\s*<\/p>/gs, ''
+    /<p grade="primary"><coloration[^>]*>КАРТОЧК[ИА]\s+ТОВАР\w*<\/coloration>\s*<\/p>/gs, ''
   );
 
   // Удаляем «Картинка (ставит фоторедактор)»
@@ -106,21 +106,33 @@ function reformatHlBlock(hlContent) {
   // Схлопываем пустые строки
   text = text.replace(/\n\s*\n+/g, '\n').trim();
 
-  // Регулярка для товара
-  const productPattern = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3[^>]*>(.*?)<\/h3>\s*(?:(<p grade="primary">(?:(?!<\/p>|<h3|<image).)*<\/p>)\s*)?<p grade="primary">\s*<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>\s*<\/p>/gs;
+  // Регулярка: захватываем ВСЁ между </h3> и ценой
+  const productPattern = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3[^>]*>(.*?)<\/h3>\s*([\s\S]*?)<p grade="primary">\s*<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>\s*<\/p>/gs;
 
   const products = [];
   let m;
   while ((m = productPattern.exec(text)) !== null) {
     const src = m[1].trim();
     const title = m[2].trim();
-    let descRaw = m[3];
+    const middleContent = m[3];
     const link = m[4].trim();
     const price = m[5].trim();
 
+    // Разбираем все абзацы между заголовком и ценой
     let description = null;
-    if (descRaw) {
-      description = descRaw.replace(/^<p grade="primary">/, '').replace(/<\/p>$/, '').trim();
+    const paragraphs = [];
+    const pPattern = /<p grade="primary">([\s\S]*?)<\/p>/g;
+    let pm;
+    while ((pm = pPattern.exec(middleContent)) !== null) {
+      const innerHtml = pm[1].trim();
+      if (innerHtml) paragraphs.push(innerHtml);
+    }
+
+    if (paragraphs.length > 0) {
+      // Каждый абзац: убираем grade="primary", оставляем чистый <p>
+      description = paragraphs
+        .map(p => '<p>' + p + '</p>')
+        .join('\n');
     }
 
     products.push({ src, title, description, link, price });
@@ -136,9 +148,9 @@ function reformatHlBlock(hlContent) {
       const p = buffer[0];
       return (
         "<product-card>\n" +
-        `    <image src="${p.src}" />\n` +
-        `    <title>${p.title}</title>\n` +
-        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        '    <image src="' + p.src + '" />\n' +
+        '    <title>' + p.title + '</title>\n' +
+        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
         "</product-card>"
       );
     }
@@ -151,9 +163,9 @@ function reformatHlBlock(hlContent) {
     for (const p of evenPart) {
       lines.push("");
       lines.push("    <product-card>");
-      lines.push(`        <image src="${p.src}" />`);
-      lines.push(`        <title>${p.title}</title>`);
-      lines.push(`        <price link-shop="${p.link}">${p.price}</price>`);
+      lines.push('        <image src="' + p.src + '" />');
+      lines.push('        <title>' + p.title + '</title>');
+      lines.push('        <price link-shop="' + p.link + '">' + p.price + '</price>');
       lines.push("    </product-card>");
     }
     lines.push("</product-card-grid>");
@@ -163,9 +175,9 @@ function reformatHlBlock(hlContent) {
       const p = oddRemainder[0];
       result +=
         "\n\n<product-card>\n" +
-        `    <image src="${p.src}" />\n` +
-        `    <title>${p.title}</title>\n` +
-        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        '    <image src="' + p.src + '" />\n' +
+        '    <title>' + p.title + '</title>\n' +
+        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
         "</product-card>";
     }
 
@@ -178,12 +190,13 @@ function reformatHlBlock(hlContent) {
         outputBlocks.push(flushNoDesc(noDescBuffer));
         noDescBuffer = [];
       }
+
       outputBlocks.push(
         "<product-card>\n\n" +
-        `    <image src="${p.src}"></image>\n` +
-        `    <title>${p.title}</title>\n` +
-        `    <description>${p.description}</description>\n` +
-        `    <price link-shop="${p.link}">${p.price}</price>\n` +
+        '    <image src="' + p.src + '"></image>\n' +
+        '    <title>' + p.title + '</title>\n' +
+        '    <description>\n' + p.description + '\n    </description>\n' +
+        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
         "</product-card>"
       );
     } else {
@@ -202,7 +215,7 @@ function reformatFullHtml(html) {
   const hlPattern = /<hl>(.*?)<\/hl>/gs;
   return html.replace(hlPattern, (match, content) => {
     const result = reformatHlBlock(content);
-    if (result === null) return match; // нет карточек — оставляем как есть
+    if (result === null) return match;
     return result;
   });
 }
@@ -278,6 +291,26 @@ function loadExample() {
 <hl>
 
     <p grade="primary">Этот блок без карточек — он останется нетронутым.</p>
+</hl>
+
+<h3 level="2" id="three">🪴 Растения для дома</h3>
+
+<hl>
+
+    <p grade="primary"><coloration accent="negative">КАРТОЧКА ТОВАРА</coloration>
+    </p>
+
+    <p grade="primary">Картинка (ставит фоторедактор)</p>
+
+    <image src="XfH2pEVNGF.01-pick-me-plants"></image>
+
+    <h3 level="3">Растение Тилландсия Медуза</h3>
+
+    <p grade="primary"><strong>Сложность ухода: ⭐️⭐️⭐️</strong></p>
+
+    <p grade="primary"><strong>Особенности: </strong>растение для тех, чей дом — дорога. Тилландсия может жить без горшка и грунта — в дикой природе она крепится к скалам и деревьям и получает влагу через листья</p>
+
+    <p grade="primary"><a href="https://greentown.online/products/tillandsiya-atmosfernaya-meduza-jivoe-rastenie-104550">1 090 ₽</a></p>
 </hl>`;
 }
 </script>
