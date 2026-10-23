@@ -5,50 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Переформатор карточек товаров</title>
 <style>
+  :root {
+    --bg: #1a1a1a;
+    --panel-bg: #1e1e1e;
+    --panel-border: #333;
+    --text: #d4d4d4;
+    --text-muted: #888;
+    --placeholder: #555;
+    --accent: #6c5ce7;
+    --accent-hover: #5b4bdb;
+    --ok: #00b894;
+    --ok-hover: #00a381;
+    --err: #e74c3c;
+    --err-hover: #c0392b;
+    --tok-bracket: #808080;
+    --tok-tag: #569cd6;
+    --tok-attr: #9cdcfe;
+    --tok-string: #ce9178;
+    --tok-comment: #6a9955;
+    --tok-json-key: #9cdcfe;
+    --tok-json-str: #ce9178;
+    --tok-json-num: #b5cea8;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f5f5f5; color: #222; padding: 24px; min-height: 100vh;
+    background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh;
   }
   h1 { font-size: 22px; margin-bottom: 4px; }
-  .subtitle { color: #666; font-size: 14px; margin-bottom: 20px; }
-  .panels { display: flex; gap: 16px; align-items: stretch; }
-  .panel {
-    flex: 1; display: flex; flex-direction: column; gap: 8px;
-  }
+  .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 20px; }
+  .panels { display: flex; gap: 16px; }
+  .panel { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .panel label { font-weight: 600; font-size: 14px; }
-  textarea {
-    width: 100%; flex: 1; min-height: 400px;
-    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-    font-size: 13px; line-height: 1.5; padding: 12px;
-    border: 1px solid #ddd; border-radius: 8px; resize: vertical;
-    background: #fff;
+
+  .editor {
+    position: relative; flex: 1; min-height: 500px;
+    border: 1px solid var(--panel-border); border-radius: 8px;
+    overflow: hidden; background: var(--panel-bg);
   }
-  textarea:focus { outline: none; border-color: #6c5ce7; }
+  .editor textarea, .editor pre {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; margin: 0; padding: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; line-height: 1.5; letter-spacing: 0;
+    tab-size: 4; -moz-tab-size: 4;
+    white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;
+    border: none; outline: none;
+  }
+  .editor textarea {
+    background: transparent; color: transparent;
+    caret-color: var(--text); resize: none; z-index: 2; overflow: auto;
+  }
+  .editor textarea::placeholder { color: var(--placeholder); }
+  .editor textarea::selection { background: rgba(108, 92, 231, 0.4); }
+  .editor pre {
+    z-index: 1; overflow: hidden; color: var(--text); pointer-events: none;
+  }
+  .editor pre code { font: inherit; color: inherit; }
+
+  .tok-bracket { color: var(--tok-bracket); }
+  .tok-tag     { color: var(--tok-tag); }
+  .tok-attr    { color: var(--tok-attr); }
+  .tok-string  { color: var(--tok-string); }
+  .tok-comment { color: var(--tok-comment); font-style: italic; }
+  .tok-json-key { color: var(--tok-json-key); }
+  .tok-json-str { color: var(--tok-json-str); }
+  .tok-json-num { color: var(--tok-json-num); }
+
   .buttons { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
   button {
     padding: 10px 20px; border: none; border-radius: 8px;
     font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s;
+    color: #fff;
   }
-  .btn-primary { background: #6c5ce7; color: #fff; }
-  .btn-primary:hover { background: #5b4bdb; }
-  .btn-secondary { background: #e9e9e9; color: #333; }
-  .btn-secondary:hover { background: #ddd; }
-  .btn-copy { background: #00b894; color: #fff; }
-  .btn-copy:hover { background: #00a381; }
-  .btn-clear { background: #e74c3c; color: #fff; }
-  .btn-clear:hover { background: #c0392b; }
-  .status { font-size: 14px; color: #666; margin-top: 8px; min-height: 20px; }
-  .status.ok { color: #00b894; }
-  .status.err { color: #e74c3c; }
-  .rules { margin-top: 24px; padding: 16px; background: #fff;
-    border: 1px solid #ddd; border-radius: 8px; font-size: 13px; color: #555; }
-  .rules h3 { margin-bottom: 8px; font-size: 15px; color: #333; }
-  .rules ul { padding-left: 20px; }
-  .rules li { margin-bottom: 4px; }
+  .btn-primary { background: var(--accent); }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-copy { background: var(--ok); }
+  .btn-copy:hover { background: var(--ok-hover); }
+  .btn-clear { background: var(--err); }
+  .btn-clear:hover { background: var(--err-hover); }
+  .status { font-size: 14px; color: var(--text-muted); margin-top: 8px; min-height: 20px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
   @media (max-width: 768px) {
     .panels { flex-direction: column; }
-    textarea { min-height: 200px; }
+    .editor { min-height: 250px; }
   }
 </style>
 </head>
@@ -60,172 +101,524 @@
 <div class="panels">
   <div class="panel">
     <label for="input">Исходный HTML</label>
-    <textarea id="input" placeholder="Вставьте сюда исходный код…"></textarea>
+    <div class="editor">
+      <pre aria-hidden="true"><code id="input-hl"></code></pre>
+      <textarea id="input" spellcheck="false" placeholder="Вставьте сюда исходный код…"></textarea>
+    </div>
   </div>
   <div class="panel">
     <label for="output">Готовый HTML</label>
-    <textarea id="output" placeholder="Результат появится здесь…" readonly></textarea>
+    <div class="editor">
+      <pre aria-hidden="true"><code id="output-hl"></code></pre>
+      <textarea id="output" spellcheck="false" placeholder="Результат появится здесь…" readonly></textarea>
+    </div>
   </div>
 </div>
 
 <div class="buttons">
   <button class="btn-primary" onclick="run()">Переформатировать</button>
   <button class="btn-copy" onclick="copyOutput()">Скопировать результат</button>
-  <button class="btn-secondary" onclick="loadExample()">Загрузить пример</button>
   <button class="btn-clear" onclick="clearAll()">Очистить</button>
 </div>
 
 <div class="status" id="status"></div>
 
-<div class="rules">
-  <h3>Правила</h3>
-  <ul>
-    <li>Блоки <code>&lt;hl&gt;…&lt;/hl&gt;</code> с карточками товаров заменяются на переформатированный код, без обёртки <code>&lt;hl&gt;</code>.</li>
-    <li>Блоки <code>&lt;hl&gt;</code> без карточек остаются нетронутыми.</li>
-    <li><b>Карточка с описанием</b> → отдельный <code>&lt;product-card&gt;</code>. Все абзацы между заголовком и ценой сохраняются, <code>grade="primary"</code> убирается, остаётся чистый <code>&lt;p&gt;</code>.</li>
-    <li><b>Карточка без описания, одиночная</b> → <code>&lt;product-card&gt;</code> без обёртки.</li>
-    <li><b>Карточки без описания, чётное число</b> → один <code>&lt;product-card-grid&gt;</code>.</li>
-    <li><b>Карточки без описания, нечётное число</b> → чётная часть в <code>&lt;product-card-grid&gt;</code>, последняя — отдельным <code>&lt;product-card&gt;</code>.</li>
-  </ul>
-</div>
-
 <script>
-function reformatHlBlock(hlContent) {
-  let text = hlContent.trim();
+/* =========================================================
+   1. Подсветка (HTML + JSON + комментарии)
+   ========================================================= */
 
-  // Удаляем «КАРТОЧКИ ТОВАРОВ» и «КАРТОЧКА ТОВАРА»
-  text = text.replace(
-    /<p grade="primary"><coloration[^>]*>КАРТОЧК[ИА]\s+ТОВАР\w*<\/coloration>\s*<\/p>/gs, ''
-  );
-
-  // Удаляем «Картинка (ставит фоторедактор)»
-  text = text.replace(
-    /<p grade="primary">\s*Картинка $ставит фоторедактор$\s*<\/p>/g, ''
-  );
-
-  // Схлопываем пустые строки
-  text = text.replace(/\n\s*\n+/g, '\n').trim();
-
-  // Регулярка: захватываем ВСЁ между </h3> и ценой
-  const productPattern = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3[^>]*>(.*?)<\/h3>\s*([\s\S]*?)<p grade="primary">\s*<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>\s*<\/p>/gs;
-
-  const products = [];
-  let m;
-  while ((m = productPattern.exec(text)) !== null) {
-    const src = m[1].trim();
-    const title = m[2].trim();
-    const middleContent = m[3];
-    const link = m[4].trim();
-    const price = m[5].trim();
-
-    // Разбираем все абзацы между заголовком и ценой
-    let description = null;
-    const paragraphs = [];
-    const pPattern = /<p grade="primary">([\s\S]*?)<\/p>/g;
-    let pm;
-    while ((pm = pPattern.exec(middleContent)) !== null) {
-      const innerHtml = pm[1].trim();
-      if (innerHtml) paragraphs.push(innerHtml);
-    }
-
-    if (paragraphs.length > 0) {
-      // Каждый абзац: убираем grade="primary", оставляем чистый <p>
-      description = paragraphs
-        .map(p => '<p>' + p + '</p>')
-        .join('\n');
-    }
-
-    products.push({ src, title, description, link, price });
-  }
-
-  if (products.length === 0) return null;
-
-  const outputBlocks = [];
-  let noDescBuffer = [];
-
-  function flushNoDesc(buffer) {
-    if (buffer.length === 1) {
-      const p = buffer[0];
-      return (
-        "<product-card>\n" +
-        '    <image src="' + p.src + '" />\n' +
-        '    <title>' + p.title + '</title>\n' +
-        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
-        "</product-card>"
-      );
-    }
-
-    const evenCount = buffer.length % 2 === 0 ? buffer.length : buffer.length - 1;
-    const evenPart = buffer.slice(0, evenCount);
-    const oddRemainder = buffer.slice(evenCount);
-
-    let lines = ["<product-card-grid>"];
-    for (const p of evenPart) {
-      lines.push("");
-      lines.push("    <product-card>");
-      lines.push('        <image src="' + p.src + '" />');
-      lines.push('        <title>' + p.title + '</title>');
-      lines.push('        <price link-shop="' + p.link + '">' + p.price + '</price>');
-      lines.push("    </product-card>");
-    }
-    lines.push("</product-card-grid>");
-    let result = lines.join("\n");
-
-    if (oddRemainder.length > 0) {
-      const p = oddRemainder[0];
-      result +=
-        "\n\n<product-card>\n" +
-        '    <image src="' + p.src + '" />\n' +
-        '    <title>' + p.title + '</title>\n' +
-        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
-        "</product-card>";
-    }
-
-    return result;
-  }
-
-  for (const p of products) {
-    if (p.description) {
-      if (noDescBuffer.length > 0) {
-        outputBlocks.push(flushNoDesc(noDescBuffer));
-        noDescBuffer = [];
-      }
-
-      outputBlocks.push(
-        "<product-card>\n\n" +
-        '    <image src="' + p.src + '"></image>\n' +
-        '    <title>' + p.title + '</title>\n' +
-        '    <description>\n' + p.description + '\n    </description>\n' +
-        '    <price link-shop="' + p.link + '">' + p.price + '</price>\n' +
-        "</product-card>"
-      );
-    } else {
-      noDescBuffer.push(p);
-    }
-  }
-
-  if (noDescBuffer.length > 0) {
-    outputBlocks.push(flushNoDesc(noDescBuffer));
-  }
-
-  return outputBlocks.join("\n\n");
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function reformatFullHtml(html) {
-  const hlPattern = /<hl>(.*?)<\/hl>/gs;
-  return html.replace(hlPattern, (match, content) => {
-    const result = reformatHlBlock(content);
-    if (result === null) return match;
-    return result;
+function highlightAttrs(attrs) {
+  var out = '';
+  var re = /(\s+)([a-zA-Z_][\w:-]*)(\s*=\s*)("[^"]*")?/g;
+  var last = 0, m;
+  while ((m = re.exec(attrs)) !== null) {
+    out += esc(attrs.slice(last, m.index));
+    out += esc(m[1]);
+    out += '<span class="tok-attr">' + esc(m[2]) + '</span>';
+    if (m[3]) out += '<span class="tok-bracket">' + esc(m[3]) + '</span>';
+    if (m[4]) out += '<span class="tok-string">' + esc(m[4]) + '</span>';
+    last = re.lastIndex;
+  }
+  out += esc(attrs.slice(last));
+  return out;
+}
+
+function highlightTag(tag) {
+  var m = /^(<\/?)([a-zA-Z][\w:-]*)([\s\S]*?)(\/?>)$/.exec(tag);
+  if (!m) return esc(tag);
+  return '<span class="tok-bracket">' + esc(m[1]) + '</span>' +
+         '<span class="tok-tag">' + esc(m[2]) + '</span>' +
+         highlightAttrs(m[3]) +
+         '<span class="tok-bracket">' + esc(m[4]) + '</span>';
+}
+
+function highlightJson(json) {
+  var out = '';
+  var re = /"(?:\\.|[^"\\])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?/g;
+  var last = 0, m;
+  while ((m = re.exec(json)) !== null) {
+    out += esc(json.slice(last, m.index));
+    var tok = m[0];
+    var cls;
+    if (tok.charAt(0) === '"') {
+      cls = m[1] ? 'tok-json-key' : 'tok-json-str';
+    } else if (/^(true|false|null)$/.test(tok)) {
+      cls = 'tok-json-num';
+    } else {
+      cls = 'tok-json-num';
+    }
+    out += '<span class="' + cls + '">' + esc(tok) + '</span>';
+    last = re.lastIndex;
+  }
+  out += esc(json.slice(last));
+  return out;
+}
+
+function highlight(code) {
+  var out = '';
+  var i = 0, n = code.length;
+  while (i < n) {
+    // XML-комментарий
+    if (code.substr(i, 4) === '<!--') {
+      var end = code.indexOf('-->', i);
+      end = end === -1 ? n : end + 3;
+      out += '<span class="tok-comment">' + esc(code.slice(i, end)) + '</span>';
+      i = end;
+      continue;
+    }
+    // JSON-блок (начинается с { на своей строке или с { после пробелов)
+    if (code[i] === '{' && (i === 0 || /[\s\n]/.test(code[i - 1]))) {
+      var depth = 0, j = i, inStr = false, esc_ = false;
+      for (; j < n; j++) {
+        var ch = code[j];
+        if (inStr) {
+          if (esc_) { esc_ = false; continue; }
+          if (ch === '\\') { esc_ = true; continue; }
+          if (ch === '"') { inStr = false; }
+        } else {
+          if (ch === '"') inStr = true;
+          else if (ch === '{') depth++;
+          else if (ch === '}') { depth--; if (depth === 0) { j++; break; } }
+        }
+      }
+      if (depth === 0) {
+        out += highlightJson(code.slice(i, j));
+        i = j;
+        continue;
+      }
+    }
+    // Тег
+    if (code[i] === '<') {
+      var gt = code.indexOf('>', i);
+      if (gt === -1) { out += esc(code.slice(i)); break; }
+      out += highlightTag(code.slice(i, gt + 1));
+      i = gt + 1;
+      continue;
+    }
+    // Обычный текст
+    var next = code.indexOf('<', i);
+    var nextBrace = code.indexOf('{', i);
+    if (nextBrace !== -1 && (next === -1 || nextBrace < next)) next = nextBrace;
+    if (next === -1) next = n;
+    out += esc(code.slice(i, next));
+    i = next;
+  }
+  return out;
+}
+
+/* =========================================================
+   2. Overlay редактор
+   ========================================================= */
+
+function attachEditor(textareaId, hlCodeId) {
+  var ta = document.getElementById(textareaId);
+  var pre = ta.previousElementSibling;
+  var code = document.getElementById(hlCodeId);
+
+  function refresh() { code.innerHTML = highlight(ta.value); }
+  function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
+
+  ta.addEventListener('input', refresh);
+  ta.addEventListener('scroll', syncScroll);
+  refresh();
+
+  return { ta: ta, refresh: refresh };
+}
+
+var inputEditor, outputEditor;
+document.addEventListener('DOMContentLoaded', function () {
+  inputEditor = attachEditor('input', 'input-hl');
+  outputEditor = attachEditor('output', 'output-hl');
+});
+
+/* =========================================================
+   3. Утилиты
+   ========================================================= */
+
+function stripTags(html) {
+  return html.replace(/<[^>]+>/g, '');
+}
+
+function escapeJson(s) {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
+function capitalizeFirst(s) {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* Первый «не-буквенный, не-цифровой, не-пробельный» символ(ы) — считаем эмодзи */
+function extractIconAndText(text) {
+  text = text.trim();
+  var m = /^([^\p{L}\p{N}\s]+)\s*(.*)$/u.exec(text);
+  if (m) return { icon: m[1], text: (m[2] || '').trim() };
+  return null;
+}
+
+/* =========================================================
+   4. Карточки товаров
+   ========================================================= */
+
+var CARD_REGEX = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>\s*([\s\S]*?)<p\s+grade="primary"\s*>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/g;
+
+function parseHrefOnly(attrs) {
+  var m = /^\s*href="([^"]*)"\s*$/.exec(attrs);
+  return m ? m[1] : null;
+}
+
+function extractDescription(middle) {
+  var pRegex = /<p\s+grade="primary"\s*>([\s\S]*?)<\/p>/g;
+  var paragraphs = [];
+  var lastIdx = 0, cleaned = '', pm;
+  while ((pm = pRegex.exec(middle)) !== null) {
+    cleaned += middle.slice(lastIdx, pm.index);
+    paragraphs.push(pm[1].trim());
+    lastIdx = pRegex.lastIndex;
+  }
+  cleaned += middle.slice(lastIdx);
+  return { paragraphs: paragraphs, hasGarbage: cleaned.replace(/\s+/g, '').length > 0 };
+}
+
+function cleanLeftover(text) {
+  var s = text;
+  s = s.replace(
+    /<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
+  s = s.replace(
+    /<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
+  return s.replace(/\s+/g, '');
+}
+
+function renderNoDescCard(c) {
+  return [
+    '<product-card>',
+    '    <image src="' + c.src + '" />',
+    '    <title>' + c.title + '</title>',
+    '    <price link-shop="' + c.link + '">' + c.price + '</price>',
+    '</product-card>'
+  ].join('\n');
+}
+
+function renderDescCard(c) {
+  var lines = [
+    '<product-card>',
+    '    <image src="' + c.src + '"></image>',
+    '    <title>' + c.title + '</title>',
+    '    <description>'
+  ];
+  for (var i = 0; i < c.description.length; i++) {
+    lines.push('        <p>' + c.description[i] + '</p>');
+  }
+  lines.push('    </description>');
+  lines.push('    <price link-shop="' + c.link + '">' + c.price + '</price>');
+  lines.push('</product-card>');
+  return lines.join('\n');
+}
+
+function renderGrid(cards) {
+  var lines = ['<product-card-grid>'];
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i];
+    lines.push('');
+    lines.push('    <product-card>');
+    lines.push('        <image src="' + c.src + '" />');
+    lines.push('        <title>' + c.title + '</title>');
+    lines.push('        <price link-shop="' + c.link + '">' + c.price + '</price>');
+    lines.push('    </product-card>');
+  }
+  lines.push('</product-card-grid>');
+  return lines.join('\n');
+}
+
+function renderNoDescBuffer(cards) {
+  if (cards.length === 1) return renderNoDescCard(cards[0]);
+  if (cards.length % 2 === 0) return renderGrid(cards);
+  return renderGrid(cards.slice(0, -1)) + '\n\n' + renderNoDescCard(cards[cards.length - 1]);
+}
+
+function buildProductCards(cards) {
+  var blocks = [], noDescBuffer = [];
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i];
+    if (c.description.length > 0) {
+      if (noDescBuffer.length > 0) {
+        blocks.push(renderNoDescBuffer(noDescBuffer));
+        noDescBuffer = [];
+      }
+      blocks.push(renderDescCard(c));
+    } else {
+      noDescBuffer.push(c);
+    }
+  }
+  if (noDescBuffer.length > 0) blocks.push(renderNoDescBuffer(noDescBuffer));
+  return blocks.join('\n\n');
+}
+
+function processHlContent(content) {
+  var cards = [], m;
+  CARD_REGEX.lastIndex = 0;
+  while ((m = CARD_REGEX.exec(content)) !== null) {
+    var link = parseHrefOnly(m[4]);
+    if (link === null) continue;
+    var desc = extractDescription(m[3]);
+    if (desc.hasGarbage) continue;
+    cards.push({
+      start: m.index, end: CARD_REGEX.lastIndex,
+      src: m[1], title: m[2].trim(),
+      description: desc.paragraphs,
+      link: link, price: m[5].trim()
+    });
+  }
+
+  var leftover = '', pos = 0;
+  for (var i = 0; i < cards.length; i++) {
+    leftover += content.slice(pos, cards[i].start);
+    pos = cards[i].end;
+  }
+  leftover += content.slice(pos);
+
+  var hasMarker = /КАРТОЧК[ИА]\s+ТОВАР/.test(content);
+  var hasUnrecognized = cleanLeftover(leftover).length > 0;
+
+  if (cards.length === 0) {
+    if (hasMarker) {
+      var srcMatch = content.match(/<image\s+src="([^"]*)"/);
+      var hint = srcMatch ? ' (image src="' + srcMatch[1] + '")' : '';
+      return {
+        output: null,
+        comment: 'НЕ РАСПОЗНАНО: <hl> с карточками' + hint +
+                 ' — не удалось собрать ни одной карточки'
+      };
+    }
+    return null;
+  }
+
+  var builtOutput = buildProductCards(cards);
+  var comment = hasUnrecognized
+    ? 'НЕ РАСПОЗНАНО: часть содержимого <hl> не распознана как карточки'
+    : null;
+  return { output: builtOutput, comment: comment };
+}
+
+function processProductsPass(input) {
+  return input.replace(/<hl>([\s\S]*?)<\/hl>/g, function (match, content) {
+    var result = processHlContent(content);
+    if (!result) return match;
+    var out = result.output === null ? match : result.output;
+    return result.comment ? '<!-- ' + result.comment + ' -->\n\n' + out : out;
   });
 }
 
+/* =========================================================
+   5. Опросы → JSON
+   ========================================================= */
+
+var SURVEY_MARKER_RE = /<coloration[^>]*>[^<]*?(?:добавить|поставить|сделать|добавь)[^<]*?опрос[^<]*?<\/coloration>/gi;
+
+function findEnclosingP(text, pos) {
+  var pStart = text.lastIndexOf('<p', pos);
+  if (pStart === -1) return null;
+  var pEnd = text.indexOf('</p>', pos);
+  if (pEnd === -1) return null;
+  return { start: pStart, end: pEnd + 4 };
+}
+
+function buildSurveyJson(question, answers) {
+  var lines = [];
+  lines.push('{');
+  lines.push('  "mode": "percent",');
+  lines.push('  "answers": [');
+  for (var i = 0; i < answers.length; i++) {
+    var a = answers[i];
+    lines.push('    {');
+    lines.push('      "icon": "' + escapeJson(a.icon) + '",');
+    lines.push('      "answer": "' + escapeJson(capitalizeFirst(a.text)) + '"');
+    lines.push('    }' + (i < answers.length - 1 ? ',' : ''));
+  }
+  lines.push('  ],');
+  lines.push('  "question": "' + escapeJson(question) + '",');
+  lines.push('  "needLogin": true');
+  lines.push('}');
+  return lines.join('\n');
+}
+
+/* Формат A — маркер, потом вопрос и ответы отдельными <p> */
+function tryProcessExpanded(input, markerP) {
+  var pos = markerP.end;
+  var question = null;
+  var answers = [];
+  var endOfBlock = pos;
+  var pRe = /\s*<p([^>]*)>([\s\S]*?)<\/p>/y;
+
+  while (true) {
+    pRe.lastIndex = pos;
+    var m = pRe.exec(input);
+    if (!m) break;
+
+    var content = m[2];
+    var plainText = stripTags(content).trim();
+
+    if (!plainText) {
+      pos = pRe.lastIndex;
+      endOfBlock = pos;
+      continue;
+    }
+
+    var icon = extractIconAndText(plainText);
+    if (icon) {
+      answers.push({ icon: icon.icon, text: icon.text });
+      pos = pRe.lastIndex;
+      endOfBlock = pos;
+      continue;
+    }
+
+    if (!question && /<strong/i.test(content)) {
+      question = plainText;
+      pos = pRe.lastIndex;
+      endOfBlock = pos;
+      continue;
+    }
+
+    break;
+  }
+
+  return { question: question, answers: answers, endOfBlock: endOfBlock };
+}
+
+/* Формат B — всё в одном <p>, разделитель <br /> */
+function tryProcessCompact(enclosingText) {
+  var innerM = /<p[^>]*>([\s\S]*?)<\/p>/.exec(enclosingText);
+  if (!innerM) return null;
+  var inner = innerM[1];
+
+  var parts = inner.split(/<br\s*\/?>/i);
+  var question = null;
+  var answers = [];
+  var hasMissingEmoji = false;
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = stripTags(parts[i]).trim();
+    if (!part) continue;
+
+    // Маркер
+    if (/(?:добав|постав|сдела|добавь)/i.test(part) && /опрос/i.test(part)) continue;
+
+    // Вопрос
+    var qMatch = /^(?:Заголовок\s+опроса|Вопрос)\s*:?\s*(.+)$/i.exec(part);
+    if (qMatch && !question) {
+      question = qMatch[1].trim();
+      continue;
+    }
+
+    // Ответ
+    var aMatch = /^Ответ\s*\d*\s*:?\s*(.+)$/i.exec(part);
+    if (aMatch) {
+      var icon = extractIconAndText(aMatch[1].trim());
+      if (icon) answers.push({ icon: icon.icon, text: icon.text });
+      else hasMissingEmoji = true;
+      continue;
+    }
+  }
+
+  return { question: question, answers: answers, hasMissingEmoji: hasMissingEmoji };
+}
+
+function processSurveysPass(input) {
+  var matches = [];
+  var m;
+  SURVEY_MARKER_RE.lastIndex = 0;
+  while ((m = SURVEY_MARKER_RE.exec(input)) !== null) {
+    matches.push({ start: m.index, end: SURVEY_MARKER_RE.lastIndex });
+  }
+
+  for (var i = matches.length - 1; i >= 0; i--) {
+    var mrk = matches[i];
+    var enc = findEnclosingP(input, mrk.start);
+    if (!enc) continue;
+    if (enc.start > mrk.start || enc.end < mrk.end) continue;
+
+    var enclosingText = input.slice(enc.start, enc.end);
+    var isCompact = /<br\s*\/?>/i.test(enclosingText);
+
+    var result, replaceStart = enc.start, replaceEnd;
+
+    if (isCompact) {
+      result = tryProcessCompact(enclosingText);
+      replaceEnd = enc.end;
+    } else {
+      result = tryProcessExpanded(input, enc);
+      replaceEnd = result.endOfBlock;
+    }
+
+    if (!result || !result.question || !result.answers || result.answers.length < 2) {
+      var cmt = '<!-- НЕ РАСПОЗНАНО: опрос — не удалось собрать вопрос и ответы. Оставить как есть и уточнить у редактора -->\n\n';
+      input = input.slice(0, enc.start) + cmt + input.slice(enc.start);
+      continue;
+    }
+
+    if (result.hasMissingEmoji) {
+      var cmt2 = '<!-- В ОПРОСЕ НЕТ ЭМОДЗИ У ЧАСТИ ОТВЕТОВ: запросить у редактора -->\n\n';
+      input = input.slice(0, enc.start) + cmt2 + input.slice(enc.start);
+      continue;
+    }
+
+    var json = buildSurveyJson(result.question, result.answers);
+    input = input.slice(0, replaceStart) + json + input.slice(replaceEnd);
+  }
+
+  return input;
+}
+
+/* =========================================================
+   6. Основной пайплайн
+   ========================================================= */
+
+function processInput(input) {
+  var out = processProductsPass(input);
+  out = processSurveysPass(out);
+  return out;
+}
+
+/* =========================================================
+   7. UI
+   ========================================================= */
+
 function run() {
-  const input = document.getElementById('input').value;
-  const status = document.getElementById('status');
+  var status = document.getElementById('status');
   try {
-    const result = reformatFullHtml(input);
-    document.getElementById('output').value = result;
+    var result = processInput(inputEditor.ta.value);
+    outputEditor.ta.value = result;
+    outputEditor.refresh();
     status.textContent = '✅ Готово!';
     status.className = 'status ok';
   } catch (e) {
@@ -235,83 +628,23 @@ function run() {
 }
 
 function copyOutput() {
-  const output = document.getElementById('output');
-  output.select();
-  document.execCommand('copy');
-  const status = document.getElementById('status');
-  status.textContent = '📋 Скопировано в буфер обмена';
-  status.className = 'status ok';
+  var ta = outputEditor.ta;
+  ta.select();
+  try {
+    document.execCommand('copy');
+    var status = document.getElementById('status');
+    status.textContent = '📋 Скопировано в буфер обмена';
+    status.className = 'status ok';
+  } catch (e) {}
+  ta.blur();
 }
 
 function clearAll() {
-  document.getElementById('input').value = '';
-  document.getElementById('output').value = '';
+  inputEditor.ta.value = '';
+  inputEditor.refresh();
+  outputEditor.ta.value = '';
+  outputEditor.refresh();
   document.getElementById('status').textContent = '';
-}
-
-function loadExample() {
-  document.getElementById('input').value = `<h3 level="2" id="one">🌦️Куртки с влагоотталкивающей пропиткой</h3>
-
-<p grade="primary">Влагоотталкивающая пропитка — специальный состав.</p>
-
-<hl>
-
-    <p grade="primary"><coloration accent="negative">КАРТОЧКИ ТОВАРОВ</coloration>
-    </p>
-
-    <p grade="primary">Картинка (ставит фоторедактор)</p>
-
-    <image src="01-waterproof-jackets-for-man"></image>
-
-    <h3 level="3">Куртка Outventure</h3>
-
-    <p grade="primary"><a href="https://www.sportmaster.ru/product/35988980299/?skuId=81254690299">1 999 ₽</a></p>
-
-    <p grade="primary">Картинка (ставит фоторедактор)</p>
-
-    <image src="02-waterproof-jackets-for-man"></image>
-
-    <h3 level="3">Куртка O'stin</h3>
-
-    <p grade="primary"><a href="http://ostin.com/product/vetrovka-s-kapyushonom/37262290299">2 999 ₽</a></p>
-
-    <p grade="primary">Картинка (ставит фоторедактор)</p>
-
-    <image src="05-waterproof-jackets-for-man"></image>
-
-    <h3 level="3">Куртка Mango</h3>
-
-    <p grade="primary">Массмаркет умело перенимает технологичные особенности горпкор-брендов.</p>
-
-    <p grade="primary"><a href="https://www.lamoda.ru/p/rtlafm953201/clothes-hebymango-vetrovka/">15 999 ₽</a></p>
-</hl>
-
-<h3 level="2" id="two">⛈️ Куртки с мембраной</h3>
-
-<hl>
-
-    <p grade="primary">Этот блок без карточек — он останется нетронутым.</p>
-</hl>
-
-<h3 level="2" id="three">🪴 Растения для дома</h3>
-
-<hl>
-
-    <p grade="primary"><coloration accent="negative">КАРТОЧКА ТОВАРА</coloration>
-    </p>
-
-    <p grade="primary">Картинка (ставит фоторедактор)</p>
-
-    <image src="XfH2pEVNGF.01-pick-me-plants"></image>
-
-    <h3 level="3">Растение Тилландсия Медуза</h3>
-
-    <p grade="primary"><strong>Сложность ухода: ⭐️⭐️⭐️</strong></p>
-
-    <p grade="primary"><strong>Особенности: </strong>растение для тех, чей дом — дорога. Тилландсия может жить без горшка и грунта — в дикой природе она крепится к скалам и деревьям и получает влагу через листья</p>
-
-    <p grade="primary"><a href="https://greentown.online/products/tillandsiya-atmosfernaya-meduza-jivoe-rastenie-104550">1 090 ₽</a></p>
-</hl>`;
 }
 </script>
 </body>
