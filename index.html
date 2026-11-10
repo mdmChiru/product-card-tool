@@ -6,26 +6,15 @@
 <title>Переформатор карточек товаров</title>
 <style>
   :root {
-    --bg: #1a1a1a;
-    --panel-bg: #1e1e1e;
-    --panel-border: #333;
-    --text: #d4d4d4;
-    --text-muted: #888;
-    --placeholder: #555;
-    --accent: #6c5ce7;
-    --accent-hover: #5b4bdb;
-    --ok: #00b894;
-    --ok-hover: #00a381;
-    --err: #e74c3c;
-    --err-hover: #c0392b;
-    --tok-bracket: #808080;
-    --tok-tag: #569cd6;
-    --tok-attr: #9cdcfe;
-    --tok-string: #ce9178;
-    --tok-comment: #6a9955;
-    --tok-json-key: #9cdcfe;
-    --tok-json-str: #ce9178;
-    --tok-json-num: #b5cea8;
+    --bg: #1a1a1a; --panel-bg: #1e1e1e; --panel-border: #333;
+    --text: #d4d4d4; --text-muted: #888; --placeholder: #555;
+    --accent: #6c5ce7; --accent-hover: #5b4bdb;
+    --ok: #00b894; --ok-hover: #00a381;
+    --err: #e74c3c; --err-hover: #c0392b;
+    --warn: #f39c12;
+    --tok-bracket: #808080; --tok-tag: #569cd6; --tok-attr: #9cdcfe;
+    --tok-string: #ce9178; --tok-comment: #6a9955;
+    --tok-json-key: #9cdcfe; --tok-json-str: #ce9178; --tok-json-num: #b5cea8;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -37,7 +26,6 @@
   .panels { display: flex; gap: 16px; }
   .panel { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .panel label { font-weight: 600; font-size: 14px; }
-
   .editor {
     position: relative; flex: 1; min-height: 500px;
     border: 1px solid var(--panel-border); border-radius: 8px;
@@ -58,11 +46,8 @@
   }
   .editor textarea::placeholder { color: var(--placeholder); }
   .editor textarea::selection { background: rgba(108, 92, 231, 0.4); }
-  .editor pre {
-    z-index: 1; overflow: hidden; color: var(--text); pointer-events: none;
-  }
+  .editor pre { z-index: 1; overflow: hidden; color: var(--text); pointer-events: none; }
   .editor pre code { font: inherit; color: inherit; }
-
   .tok-bracket { color: var(--tok-bracket); }
   .tok-tag     { color: var(--tok-tag); }
   .tok-attr    { color: var(--tok-attr); }
@@ -71,7 +56,6 @@
   .tok-json-key { color: var(--tok-json-key); }
   .tok-json-str { color: var(--tok-json-str); }
   .tok-json-num { color: var(--tok-json-num); }
-
   .buttons { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
   button {
     padding: 10px 20px; border: none; border-radius: 8px;
@@ -86,7 +70,52 @@
   .btn-clear:hover { background: var(--err-hover); }
   .status { font-size: 14px; color: var(--text-muted); margin-top: 8px; min-height: 20px; }
   .status.ok { color: var(--ok); }
-  .status.err { color: var(--err); }
+  .status.err { color: var(--warn); }
+
+  /* === Панель предупреждений === */
+  .warnings { margin-top: 16px; display: none; }
+  .warnings.show { display: block; }
+  .warnings-title {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 15px; font-weight: 600; margin-bottom: 12px;
+    color: var(--text);
+  }
+  .warnings-close {
+    background: transparent; border: none;
+    color: var(--text-muted); font-size: 20px;
+    cursor: pointer; padding: 0 8px; line-height: 1;
+    border-radius: 4px;
+  }
+  .warnings-close:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .warning-item {
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    background: var(--panel-bg);
+    border-left: 3px solid var(--text-muted);
+    font-size: 13px;
+  }
+  .warning-item.error { border-left-color: var(--err); }
+  .warning-item.warning { border-left-color: var(--warn); }
+  .warning-item .warn-msg {
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .warning-item .warn-msg strong { color: var(--text); }
+  .warning-item .warn-context {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 80px;
+    overflow: auto;
+  }
+
   @media (max-width: 768px) {
     .panels { flex-direction: column; }
     .editor { min-height: 250px; }
@@ -122,237 +151,287 @@
 </div>
 
 <div class="status" id="status"></div>
+<div class="warnings" id="warnings"></div>
 
 <script>
 /* =========================================================
-   1. Подсветка (HTML + JSON + комментарии)
+   0. Состояние предупреждений
    ========================================================= */
 
-function esc(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+let currentWarnings = [];
+
+function addWarning(type, message, snippet) {
+  currentWarnings.push({ type, message, snippet: snippet || '' });
 }
 
+function buildSnippet(text, maxLen = 100) {
+  if (!text) return '';
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > maxLen ? clean.slice(0, maxLen) + '…' : clean;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderWarnings(warnings) {
+  const panel = document.getElementById('warnings');
+  if (!warnings || warnings.length === 0) {
+    panel.innerHTML = '';
+    panel.classList.remove('show');
+    return;
+  }
+  const items = warnings.map(w => {
+    const severity = (w.type === 'hl-none' || w.type === 'survey-parse') ? 'error' : 'warning';
+    let html = '<div class="warning-item ' + severity + '">';
+    html += '<div class="warn-msg">' + escapeHtml(w.message) + '</div>';
+    if (w.snippet) html += '<div class="warn-context">' + escapeHtml(w.snippet) + '</div>';
+    html += '</div>';
+    return html;
+  }).join('');
+  panel.innerHTML =
+    '<div class="warnings-title">' +
+      '⚠️ Предупреждения (' + warnings.length + ')' +
+      '<button class="warnings-close" onclick="renderWarnings([])" title="Закрыть">×</button>' +
+    '</div>' + items;
+  panel.classList.add('show');
+}
+
+/* =========================================================
+   1. Подсветка
+   ========================================================= */
+
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
 function highlightAttrs(attrs) {
-  var out = '';
-  var re = /(\s+)([a-zA-Z_][\w:-]*)(\s*=\s*)("[^"]*")?/g;
-  var last = 0, m;
+  let out = ''; const re = /(\s+)([a-zA-Z_][\w:-]*)(\s*=\s*)("[^"]*")?/g; let last = 0, m;
   while ((m = re.exec(attrs)) !== null) {
-    out += esc(attrs.slice(last, m.index));
-    out += esc(m[1]);
+    out += esc(attrs.slice(last, m.index)) + esc(m[1]);
     out += '<span class="tok-attr">' + esc(m[2]) + '</span>';
     if (m[3]) out += '<span class="tok-bracket">' + esc(m[3]) + '</span>';
     if (m[4]) out += '<span class="tok-string">' + esc(m[4]) + '</span>';
     last = re.lastIndex;
   }
-  out += esc(attrs.slice(last));
-  return out;
+  return out + esc(attrs.slice(last));
 }
 
 function highlightTag(tag) {
-  var m = /^(<\/?)([a-zA-Z][\w:-]*)([\s\S]*?)(\/?>)$/.exec(tag);
+  const m = /^(<\/?)([a-zA-Z][\w:-]*)([\s\S]*?)(\/?>)$/.exec(tag);
   if (!m) return esc(tag);
-  return '<span class="tok-bracket">' + esc(m[1]) + '</span>' +
-         '<span class="tok-tag">' + esc(m[2]) + '</span>' +
-         highlightAttrs(m[3]) +
-         '<span class="tok-bracket">' + esc(m[4]) + '</span>';
+  return '<span class="tok-bracket">' + esc(m[1]) + '</span><span class="tok-tag">' + esc(m[2]) + '</span>' + highlightAttrs(m[3]) + '<span class="tok-bracket">' + esc(m[4]) + '</span>';
 }
 
 function highlightJson(json) {
-  var out = '';
-  var re = /"(?:\\.|[^"\\])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?/g;
-  var last = 0, m;
+  let out = ''; const re = /"(?:\\.|[^"\\])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?/g; let last = 0, m;
   while ((m = re.exec(json)) !== null) {
     out += esc(json.slice(last, m.index));
-    var tok = m[0];
-    var cls;
-    if (tok.charAt(0) === '"') {
-      cls = m[1] ? 'tok-json-key' : 'tok-json-str';
-    } else if (/^(true|false|null)$/.test(tok)) {
-      cls = 'tok-json-num';
-    } else {
-      cls = 'tok-json-num';
-    }
+    const tok = m[0];
+    const cls = tok.charAt(0) === '"' ? (m[1] ? 'tok-json-key' : 'tok-json-str') : 'tok-json-num';
     out += '<span class="' + cls + '">' + esc(tok) + '</span>';
     last = re.lastIndex;
   }
-  out += esc(json.slice(last));
-  return out;
+  return out + esc(json.slice(last));
 }
 
 function highlight(code) {
-  var out = '';
-  var i = 0, n = code.length;
+  let out = ''; let i = 0; const n = code.length;
   while (i < n) {
-    // XML-комментарий
     if (code.substr(i, 4) === '<!--') {
-      var end = code.indexOf('-->', i);
-      end = end === -1 ? n : end + 3;
-      out += '<span class="tok-comment">' + esc(code.slice(i, end)) + '</span>';
-      i = end;
-      continue;
+      let end = code.indexOf('-->', i); end = end === -1 ? n : end + 3;
+      out += '<span class="tok-comment">' + esc(code.slice(i, end)) + '</span>'; i = end; continue;
     }
-    // JSON-блок (начинается с { на своей строке или с { после пробелов)
     if (code[i] === '{' && (i === 0 || /[\s\n]/.test(code[i - 1]))) {
-      var depth = 0, j = i, inStr = false, esc_ = false;
+      let depth = 0, j = i, inStr = false, inEsc = false;
       for (; j < n; j++) {
-        var ch = code[j];
-        if (inStr) {
-          if (esc_) { esc_ = false; continue; }
-          if (ch === '\\') { esc_ = true; continue; }
-          if (ch === '"') { inStr = false; }
-        } else {
-          if (ch === '"') inStr = true;
-          else if (ch === '{') depth++;
-          else if (ch === '}') { depth--; if (depth === 0) { j++; break; } }
-        }
+        const ch = code[j];
+        if (inStr) { if (inEsc) { inEsc = false; continue; } if (ch === '\\') { inEsc = true; continue; } if (ch === '"') inStr = false; }
+        else { if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) { j++; break; } } }
       }
-      if (depth === 0) {
-        out += highlightJson(code.slice(i, j));
-        i = j;
-        continue;
-      }
+      if (depth === 0) { out += highlightJson(code.slice(i, j)); i = j; continue; }
     }
-    // Тег
     if (code[i] === '<') {
-      var gt = code.indexOf('>', i);
+      const gt = code.indexOf('>', i);
       if (gt === -1) { out += esc(code.slice(i)); break; }
-      out += highlightTag(code.slice(i, gt + 1));
-      i = gt + 1;
-      continue;
+      out += highlightTag(code.slice(i, gt + 1)); i = gt + 1; continue;
     }
-    // Обычный текст
-    var next = code.indexOf('<', i);
-    var nextBrace = code.indexOf('{', i);
+    let next = code.indexOf('<', i); const nextBrace = code.indexOf('{', i);
     if (nextBrace !== -1 && (next === -1 || nextBrace < next)) next = nextBrace;
     if (next === -1) next = n;
-    out += esc(code.slice(i, next));
-    i = next;
+    out += esc(code.slice(i, next)); i = next;
   }
   return out;
 }
 
-/* =========================================================
-   2. Overlay редактор
-   ========================================================= */
-
 function attachEditor(textareaId, hlCodeId) {
-  var ta = document.getElementById(textareaId);
-  var pre = ta.previousElementSibling;
-  var code = document.getElementById(hlCodeId);
-
+  const ta = document.getElementById(textareaId);
+  const pre = ta.previousElementSibling;
+  const code = document.getElementById(hlCodeId);
   function refresh() { code.innerHTML = highlight(ta.value); }
   function syncScroll() { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
-
   ta.addEventListener('input', refresh);
   ta.addEventListener('scroll', syncScroll);
   refresh();
-
-  return { ta: ta, refresh: refresh };
+  return { ta, refresh };
 }
 
-var inputEditor, outputEditor;
-document.addEventListener('DOMContentLoaded', function () {
+let inputEditor, outputEditor;
+document.addEventListener('DOMContentLoaded', () => {
   inputEditor = attachEditor('input', 'input-hl');
   outputEditor = attachEditor('output', 'output-hl');
 });
 
 /* =========================================================
-   3. Утилиты
+   2. Утилиты
    ========================================================= */
 
-function stripTags(html) {
-  return html.replace(/<[^>]+>/g, '');
-}
-
-function escapeJson(s) {
-  return s
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
-}
-
-function capitalizeFirst(s) {
-  if (!s) return s;
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/* Первый «не-буквенный, не-цифровой, не-пробельный» символ(ы) — считаем эмодзи */
+function stripTags(html) { return html.replace(/<[^>]+>/g, ''); }
+function stripStrong(html) { return html.replace(/<\/?strong\b[^>]*>/gi, ''); }
+function escapeAttr(s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escapeJson(s) { return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'); }
+function capitalizeFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function extractIconAndText(text) {
   text = text.trim();
-  var m = /^([^\p{L}\p{N}\s]+)\s*(.*)$/u.exec(text);
+  const m = /^([^\p{L}\p{N}\s]+)\s*(.*)$/u.exec(text);
   if (m) return { icon: m[1], text: (m[2] || '').trim() };
   return null;
 }
-
-/* =========================================================
-   4. Карточки товаров
-   ========================================================= */
-
-var CARD_REGEX = /<image\s+src="([^"]*)"\s*><\/image>\s*<h3\b[^>]*>([\s\S]*?)<\/h3>\s*([\s\S]*?)<p\s+grade="primary"\s*>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/g;
-
 function parseHrefOnly(attrs) {
-  var m = /^\s*href="([^"]*)"\s*$/.exec(attrs);
+  const cleaned = attrs.replace(/\s+(?:rel|target|class|id|title|role|aria-[a-z-]+)="[^"]*"/gi, '').trim();
+  const m = /^href="([^"]*)"$/.exec(cleaned);
   return m ? m[1] : null;
 }
 
-function extractDescription(middle) {
-  var pRegex = /<p\s+grade="primary"\s*>([\s\S]*?)<\/p>/g;
-  var paragraphs = [];
-  var lastIdx = 0, cleaned = '', pm;
-  while ((pm = pRegex.exec(middle)) !== null) {
-    cleaned += middle.slice(lastIdx, pm.index);
-    paragraphs.push(pm[1].trim());
-    lastIdx = pRegex.lastIndex;
+/* =========================================================
+   3. Типы A/B: <hl> + маркер
+   ========================================================= */
+
+function parseCardParts(pre, titleHtml, post) {
+  let src = null, imageFormat = null;
+  let imgM = /<image\s+src="([^"]*)"\s*\/>/.exec(pre);
+  if (imgM) { src = imgM[1]; imageFormat = 'self'; }
+  else {
+    imgM = /<image\s+src="([^"]*)"\s*><\/image>/.exec(pre);
+    if (imgM) { src = imgM[1]; imageFormat = 'closed'; }
   }
-  cleaned += middle.slice(lastIdx);
-  return { paragraphs: paragraphs, hasGarbage: cleaned.replace(/\s+/g, '').length > 0 };
+
+  let label = null;
+  const labelM = /<p\s+grade="primary"\s*>\s*(?:<strong>\s*)?бирка\s+([^\p{L}\p{N}\s]+)\s*(?:<\/strong>\s*)?<\/p>/u.exec(pre);
+  if (labelM) label = labelM[1].trim();
+
+  let preClean = pre;
+  if (imgM) preClean = preClean.replace(imgM[0], '');
+  if (labelM) preClean = preClean.replace(labelM[0], '');
+  if (preClean.replace(/\s+/g, '').length > 0) return null;
+
+  let price = null, link = null, postClean = post;
+
+  const priceM = /<p\s+grade="primary"\s*>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/g;
+  const priceMatches = [];
+  let pm;
+  while ((pm = priceM.exec(postClean)) !== null) {
+    priceMatches.push({ start: pm.index, end: priceM.lastIndex, attrs: pm[1], text: pm[2] });
+  }
+  if (priceMatches.length > 0) {
+    const chosen = priceMatches[0];
+    price = chosen.text.trim();
+    const href = parseHrefOnly(chosen.attrs);
+    if (!href) return null;
+    link = href;
+    postClean = postClean.slice(0, chosen.start) + postClean.slice(chosen.end);
+  } else {
+    const fbM = /<p\s+grade="primary"\s*>([\s\S]*?)<br\s*\/?>\s*<br\s*\/?>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/.exec(postClean);
+    if (!fbM) return null;
+    price = fbM[3].trim();
+    const href = parseHrefOnly(fbM[2]);
+    if (!href) return null;
+    link = href;
+    const descText = fbM[1].trim();
+    const replacement = descText ? '<p grade="primary">' + descText + '</p>' : '';
+    postClean = postClean.slice(0, fbM.index) + replacement + postClean.slice(fbM.index + fbM[0].length);
+  }
+
+  const descParts = [];
+  const descP = /<p\s+grade="primary"\s*>([\s\S]*?)<\/p>/g;
+  let dm;
+  while ((dm = descP.exec(postClean)) !== null) descParts.push(dm[1].trim());
+
+  let postFinal = postClean;
+  descP.lastIndex = 0;
+  while ((dm = descP.exec(postClean)) !== null) postFinal = postFinal.replace(dm[0], '');
+  if (postFinal.replace(/\s+/g, '').length > 0) return null;
+
+  return { src, imageFormat, label, title: titleHtml.trim(), price, link, description: descParts };
 }
 
-function cleanLeftover(text) {
-  var s = text;
-  s = s.replace(
-    /<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
-  s = s.replace(
-    /<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
-  return s.replace(/\s+/g, '');
+function parseHlBlock(content) {
+  content = content.replace(/<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
+  content = content.replace(/<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
+
+  const h3Regex = /<h3\b([^>]*)>([\s\S]*?)<\/h3>/g;
+  const h3Matches = [];
+  let m;
+  while ((m = h3Regex.exec(content)) !== null) {
+    h3Matches.push({ start: m.index, end: h3Regex.lastIndex, inner: m[2] });
+  }
+  if (h3Matches.length === 0) return null;
+
+  const cards = [];
+  let prevEnd = 0;
+  for (let i = 0; i < h3Matches.length; i++) {
+    const h3 = h3Matches[i];
+    const pre = content.slice(prevEnd, h3.start);
+    const postEnd = i + 1 < h3Matches.length ? h3Matches[i + 1].start : content.length;
+    const post = content.slice(h3.end, postEnd);
+    const card = parseCardParts(pre, h3.inner, post);
+    if (!card) return { error: 'card_unparsed', h3: h3.inner.trim() };
+    cards.push(card);
+    prevEnd = postEnd;
+  }
+  return { cards };
 }
 
-function renderNoDescCard(c) {
+function renderImage(src, format, indent) {
+  const ind = '    '.repeat(indent);
+  const s = src === null ? '' : src;
+  return format === 'self' ? ind + '<image src="' + s + '" />' : ind + '<image src="' + s + '"></image>';
+}
+
+function renderCardSimple(c) {
+  const img = renderImage(c.src, c.imageFormat || 'self', 1);
+  const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
   return [
-    '<product-card>',
-    '    <image src="' + c.src + '" />',
-    '    <title>' + c.title + '</title>',
+    '<product-card' + labelAttr + '>',
+    img,
+    '    <title>' + stripStrong(c.title) + '</title>',
     '    <price link-shop="' + c.link + '">' + c.price + '</price>',
     '</product-card>'
   ].join('\n');
 }
 
-function renderDescCard(c) {
-  var lines = [
-    '<product-card>',
-    '    <image src="' + c.src + '"></image>',
-    '    <title>' + c.title + '</title>',
+function renderCardWithDesc(c) {
+  const img = renderImage(c.src, c.imageFormat || 'self', 1);
+  const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
+  const lines = [
+    '<product-card' + labelAttr + '>',
+    img,
+    '    <title>' + stripStrong(c.title) + '</title>',
     '    <description>'
   ];
-  for (var i = 0; i < c.description.length; i++) {
-    lines.push('        <p>' + c.description[i] + '</p>');
-  }
+  for (const p of c.description) lines.push('        <p>' + p + '</p>');
   lines.push('    </description>');
   lines.push('    <price link-shop="' + c.link + '">' + c.price + '</price>');
   lines.push('</product-card>');
   return lines.join('\n');
 }
 
-function renderGrid(cards) {
-  var lines = ['<product-card-grid>'];
-  for (var i = 0; i < cards.length; i++) {
-    var c = cards[i];
-    lines.push('');
-    lines.push('    <product-card>');
-    lines.push('        <image src="' + c.src + '" />');
-    lines.push('        <title>' + c.title + '</title>');
+function renderGridAB(cards) {
+  const lines = ['<product-card-grid>'];
+  for (const c of cards) {
+    const img = renderImage(c.src, c.imageFormat || 'self', 2);
+    const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
+    lines.push('', '    <product-card' + labelAttr + '>');
+    lines.push(img);
+    lines.push('        <title>' + stripStrong(c.title) + '</title>');
     lines.push('        <price link-shop="' + c.link + '">' + c.price + '</price>');
     lines.push('    </product-card>');
   }
@@ -360,106 +439,229 @@ function renderGrid(cards) {
   return lines.join('\n');
 }
 
-function renderNoDescBuffer(cards) {
-  if (cards.length === 1) return renderNoDescCard(cards[0]);
-  if (cards.length % 2 === 0) return renderGrid(cards);
-  return renderGrid(cards.slice(0, -1)) + '\n\n' + renderNoDescCard(cards[cards.length - 1]);
-}
-
-function buildProductCards(cards) {
-  var blocks = [], noDescBuffer = [];
-  for (var i = 0; i < cards.length; i++) {
-    var c = cards[i];
-    if (c.description.length > 0) {
-      if (noDescBuffer.length > 0) {
-        blocks.push(renderNoDescBuffer(noDescBuffer));
-        noDescBuffer = [];
-      }
-      blocks.push(renderDescCard(c));
-    } else {
-      noDescBuffer.push(c);
-    }
-  }
-  if (noDescBuffer.length > 0) blocks.push(renderNoDescBuffer(noDescBuffer));
-  return blocks.join('\n\n');
+function flushNoDesc(cards) {
+  if (cards.length === 1) return renderCardSimple(cards[0]);
+  if (cards.length % 2 === 0) return renderGridAB(cards);
+  return renderGridAB(cards.slice(0, -1)) + '\n\n' + renderCardSimple(cards[cards.length - 1]);
 }
 
 function processHlContent(content) {
-  var cards = [], m;
-  CARD_REGEX.lastIndex = 0;
-  while ((m = CARD_REGEX.exec(content)) !== null) {
-    var link = parseHrefOnly(m[4]);
-    if (link === null) continue;
-    var desc = extractDescription(m[3]);
-    if (desc.hasGarbage) continue;
-    cards.push({
-      start: m.index, end: CARD_REGEX.lastIndex,
-      src: m[1], title: m[2].trim(),
-      description: desc.paragraphs,
-      link: link, price: m[5].trim()
-    });
-  }
-
-  var leftover = '', pos = 0;
-  for (var i = 0; i < cards.length; i++) {
-    leftover += content.slice(pos, cards[i].start);
-    pos = cards[i].end;
-  }
-  leftover += content.slice(pos);
-
-  var hasMarker = /КАРТОЧК[ИА]\s+ТОВАР/.test(content);
-  var hasUnrecognized = cleanLeftover(leftover).length > 0;
-
-  if (cards.length === 0) {
+  const hasMarker = /КАРТОЧК[ИА]\s+ТОВАР/.test(content);
+  const parsed = parseHlBlock(content);
+  if (!parsed) {
     if (hasMarker) {
-      var srcMatch = content.match(/<image\s+src="([^"]*)"/);
-      var hint = srcMatch ? ' (image src="' + srcMatch[1] + '")' : '';
-      return {
-        output: null,
-        comment: 'НЕ РАСПОЗНАНО: <hl> с карточками' + hint +
-                 ' — не удалось собрать ни одной карточки'
-      };
+      const srcMatch = content.match(/<image\s+src="([^"]*)"/);
+      const hint = srcMatch ? ' (image src="' + srcMatch[1] + '")' : '';
+      addWarning(
+        'hl-none',
+        'Не удалось собрать ни одной карточки в <hl>' + hint + '. Блок оставлен без изменений.',
+        buildSnippet(content)
+      );
+      return { output: null };
     }
     return null;
   }
+  if (parsed.error) {
+    addWarning(
+      'hl-none',
+      'Карточка «' + parsed.h3 + '» не собрана — весь <hl> оставлен без изменений.',
+      buildSnippet(content)
+    );
+    return { output: null };
+  }
 
-  var builtOutput = buildProductCards(cards);
-  var comment = hasUnrecognized
-    ? 'НЕ РАСПОЗНАНО: часть содержимого <hl> не распознана как карточки'
-    : null;
-  return { output: builtOutput, comment: comment };
+  /* Собираем все карточки, leftover не сохраняем — но предупреждаем */
+  const blocks = [];
+  let buffer = [];
+  for (const c of parsed.cards) {
+    if (c.description.length > 0) {
+      if (buffer.length > 0) { blocks.push(flushNoDesc(buffer)); buffer = []; }
+      blocks.push(renderCardWithDesc(c));
+    } else {
+      buffer.push(c);
+    }
+  }
+  if (buffer.length > 0) blocks.push(flushNoDesc(buffer));
+
+  /* Проверяем, был ли в блоке нераспознанный контент */
+  let contentNoTech = content;
+  contentNoTech = contentNoTech.replace(/<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
+  contentNoTech = contentNoTech.replace(/<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
+
+  /* Пересчитываем: сколько текста ушло в карточки, сколько осталось */
+  const h3Ranges = [];
+  const h3Re = /<h3\b[^>]*>[\s\S]*?<\/h3>/g;
+  let hm;
+  while ((hm = h3Re.exec(contentNoTech)) !== null) h3Ranges.push([hm.index, h3Re.lastIndex]);
+
+  /* Простой эвристический признак: если после удаления карточных элементов
+     в contentNoTech что-то осталось непустое (не считая h3 и то, что между ними),
+     то часть контента потеряна. Это приблизительная проверка, но лучше, чем ничего. */
+  let between = '';
+  let lastEnd = 0;
+  for (const [s, e] of h3Ranges) {
+    between += contentNoTech.slice(lastEnd, s);
+    lastEnd = e;
+  }
+  between += contentNoTech.slice(lastEnd);
+  /* Убираем все <p grade="primary">...</p> и <image ...>, что тоже были частью карточек */
+  between = between
+    .replace(/<p\s+grade="primary"\s*>[\s\S]*?<\/p>/g, '')
+    .replace(/<image[^>]*>(?:[\s\S]*?<\/image>)?/g, '')
+    .replace(/\s+/g, '');
+
+  if (between.length > 0) {
+    addWarning(
+      'hl-partial',
+      'Часть содержимого <hl> не распознана как карточки и не попала в вывод. Проверьте исходник.',
+      buildSnippet(between)
+    );
+  }
+
+  return { output: blocks.join('\n\n') };
 }
 
-function processProductsPass(input) {
-  return input.replace(/<hl>([\s\S]*?)<\/hl>/g, function (match, content) {
-    var result = processHlContent(content);
-    if (!result) return match;
-    var out = result.output === null ? match : result.output;
-    return result.comment ? '<!-- ' + result.comment + ' -->\n\n' + out : out;
+function processHlBlocks(input) {
+  return input.replace(/<hl>([\s\S]*?)<\/hl>/g, (match, content) => {
+    const result = processHlContent(content);
+    if (result === null) return match;
+    return result.output === null ? match : result.output;
   });
 }
 
 /* =========================================================
-   5. Опросы → JSON
+   4. Тип C: <h3> + <p>цена</p> + <p>{url}(url)</p>
    ========================================================= */
 
-var SURVEY_MARKER_RE = /<coloration[^>]*>[^<]*?(?:добавить|поставить|сделать|добавь)[^<]*?опрос[^<]*?<\/coloration>/gi;
+const TYPE_C_RE = /<h3\b[^>]*>([\s\S]*?)<\/h3>\s*<p\b[^>]*>([\s\S]*?)<\/p>\s*<p\b[^>]*>\s*\{([^}]+)\}\(([^)]+)\)\s*<\/p>/g;
+
+function renderTypeC(c) {
+  return [
+    '<product-card>',
+    '    <image src=""></image>',
+    '    <title>' + stripStrong(c.title) + '</title>',
+    '    <price link-shop="' + c.link + '">' + c.price + '</price>',
+    '</product-card>'
+  ].join('\n');
+}
+
+function renderGridC(cards) {
+  const lines = ['<product-card-grid>'];
+  for (const c of cards) {
+    lines.push('', '    <product-card>');
+    lines.push('        <image src=""></image>');
+    lines.push('        <title>' + stripStrong(c.title) + '</title>');
+    lines.push('        <price link-shop="' + c.link + '">' + c.price + '</price>');
+    lines.push('    </product-card>');
+  }
+  lines.push('</product-card-grid>');
+  return lines.join('\n');
+}
+
+function renderGroupC(cards) {
+  if (cards.length === 1) return renderTypeC(cards[0]);
+  if (cards.length % 2 === 0) return renderGridC(cards);
+  return renderGridC(cards.slice(0, -1)) + '\n\n' + renderTypeC(cards[cards.length - 1]);
+}
+
+function processTypeC(input) {
+  const matches = [];
+  let m;
+  TYPE_C_RE.lastIndex = 0;
+  while ((m = TYPE_C_RE.exec(input)) !== null) {
+    matches.push({ start: m.index, end: TYPE_C_RE.lastIndex, title: m[1].trim(), price: m[2].trim(), link: m[4] });
+  }
+  if (matches.length === 0) return input;
+
+  const groups = [];
+  let current = [matches[0]];
+  for (let i = 1; i < matches.length; i++) {
+    const prev = current[current.length - 1];
+    const gap = input.slice(prev.end, matches[i].start);
+    if (/^\s*$/.test(gap)) current.push(matches[i]);
+    else { groups.push(current); current = [matches[i]]; }
+  }
+  groups.push(current);
+
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const g = groups[i];
+    input = input.slice(0, g[0].start) + renderGroupC(g) + input.slice(g[g.length - 1].end);
+  }
+  return input;
+}
+
+/* =========================================================
+   5. Тип D: <h2> + label + title + price + <image><caption> + desc
+   ========================================================= */
+
+const TYPE_D_RE = /<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*(?:<p\b([^>]*)>([\s\S]*?)<\/p>\s*)?<p\b([^>]*)>([\s\S]*?)<\/p>\s*<p\b([^>]*)>([\s\S]*?)<\/p>\s*<image\b([^>]*)>\s*<caption>([\s\S]*?)<\/caption>\s*<\/image>\s*<p\b([^>]*)>([\s\S]*?)<\/p>/g;
+
+function looksLikeLabel(text) {
+  const t = stripTags(text).trim();
+  if (!t || t.length > 30 || /[.!?]$/.test(t)) return false;
+  const w = t.split(/\s+/).filter(x => x.length > 0);
+  return w.length >= 1 && w.length <= 2;
+}
+
+function processTypeD(input) {
+  return input.replace(TYPE_D_RE, (match, h2Attrs, h2Inner, labelAttrs, labelContent, titleAttrs, titleContent, priceAttrs, priceContent, imgAttrs, caption, descAttrs, descContent) => {
+    let label = null, titleText, priceText;
+    if (labelAttrs !== undefined && labelContent !== undefined && looksLikeLabel(labelContent)) {
+      label = stripTags(labelContent).trim();
+      titleText = titleContent.trim();
+      priceText = priceContent.trim();
+    } else if (labelAttrs !== undefined && labelContent !== undefined) {
+      return match;
+    } else {
+      titleText = titleContent.trim();
+      priceText = priceContent.trim();
+    }
+    const capTrim = caption.trim();
+    let capLink = '', capText = '';
+    const linkM = /\{([^}]+)\}\(([^)]+)\)/.exec(capTrim);
+    if (linkM) capLink = linkM[2];
+    else if (capTrim) capText = stripTags(capTrim).trim();
+    let link = '';
+    const pl = /<a\s+href="([^"]*)"/i.exec(priceContent);
+    if (pl) link = pl[1];
+    else if (capLink) link = capLink;
+    const priceClean = stripTags(priceContent).trim();
+    let description = stripTags(descContent).trim();
+    if (capText) description = capText + (description ? ' ' + description : '');
+    const lines = ['<h2' + h2Attrs + '>' + h2Inner + '</h2>', ''];
+    const lAttr = label ? ' label="' + escapeAttr(label) + '"' : '';
+    lines.push('<product-card' + lAttr + '>');
+    lines.push('    <image src=""></image>');
+    lines.push('    <title>' + stripStrong(titleText) + '</title>');
+    if (description) {
+      lines.push('    <description>');
+      lines.push('        <p>' + description + '</p>');
+      lines.push('    </description>');
+    }
+    lines.push('    <price link-shop="' + link + '">' + priceClean + '</price>');
+    lines.push('</product-card>');
+    return lines.join('\n');
+  });
+}
+
+/* =========================================================
+   6. Опросы → JSON
+   ========================================================= */
+
+const SURVEY_MARKER_RE = /<coloration[^>]*>[^<]*?(?:добавить|поставить|сделать|добавь)[^<]*?опрос[^<]*?<\/coloration>/gi;
 
 function findEnclosingP(text, pos) {
-  var pStart = text.lastIndexOf('<p', pos);
+  const pStart = text.lastIndexOf('<p', pos);
   if (pStart === -1) return null;
-  var pEnd = text.indexOf('</p>', pos);
+  const pEnd = text.indexOf('</p>', pos);
   if (pEnd === -1) return null;
   return { start: pStart, end: pEnd + 4 };
 }
 
 function buildSurveyJson(question, answers) {
-  var lines = [];
-  lines.push('{');
-  lines.push('  "mode": "percent",');
-  lines.push('  "answers": [');
-  for (var i = 0; i < answers.length; i++) {
-    var a = answers[i];
+  const lines = ['{', '  "mode": "percent",', '  "answers": ['];
+  for (let i = 0; i < answers.length; i++) {
+    const a = answers[i];
     lines.push('    {');
     lines.push('      "icon": "' + escapeJson(a.icon) + '",');
     lines.push('      "answer": "' + escapeJson(capitalizeFirst(a.text)) + '"');
@@ -472,167 +674,137 @@ function buildSurveyJson(question, answers) {
   return lines.join('\n');
 }
 
-/* Формат A — маркер, потом вопрос и ответы отдельными <p> */
 function tryProcessExpanded(input, markerP) {
-  var pos = markerP.end;
-  var question = null;
-  var answers = [];
-  var endOfBlock = pos;
-  var pRe = /\s*<p([^>]*)>([\s\S]*?)<\/p>/y;
-
+  let pos = markerP.end, question = null;
+  const answers = [];
+  let endOfBlock = pos;
+  const pRe = /\s*<p([^>]*)>([\s\S]*?)<\/p>/y;
   while (true) {
     pRe.lastIndex = pos;
-    var m = pRe.exec(input);
+    const m = pRe.exec(input);
     if (!m) break;
-
-    var content = m[2];
-    var plainText = stripTags(content).trim();
-
-    if (!plainText) {
-      pos = pRe.lastIndex;
-      endOfBlock = pos;
-      continue;
-    }
-
-    var icon = extractIconAndText(plainText);
-    if (icon) {
-      answers.push({ icon: icon.icon, text: icon.text });
-      pos = pRe.lastIndex;
-      endOfBlock = pos;
-      continue;
-    }
-
-    if (!question && /<strong/i.test(content)) {
-      question = plainText;
-      pos = pRe.lastIndex;
-      endOfBlock = pos;
-      continue;
-    }
-
+    const content = m[2];
+    const plainText = stripTags(content).trim();
+    if (!plainText) { pos = pRe.lastIndex; endOfBlock = pos; continue; }
+    const icon = extractIconAndText(plainText);
+    if (icon) { answers.push({ icon: icon.icon, text: icon.text }); pos = pRe.lastIndex; endOfBlock = pos; continue; }
+    if (!question && /<strong/i.test(content)) { question = plainText; pos = pRe.lastIndex; endOfBlock = pos; continue; }
     break;
   }
-
-  return { question: question, answers: answers, endOfBlock: endOfBlock };
+  return { question, answers, endOfBlock };
 }
 
-/* Формат B — всё в одном <p>, разделитель <br /> */
 function tryProcessCompact(enclosingText) {
-  var innerM = /<p[^>]*>([\s\S]*?)<\/p>/.exec(enclosingText);
+  const innerM = /<p[^>]*>([\s\S]*?)<\/p>/.exec(enclosingText);
   if (!innerM) return null;
-  var inner = innerM[1];
-
-  var parts = inner.split(/<br\s*\/?>/i);
-  var question = null;
-  var answers = [];
-  var hasMissingEmoji = false;
-
-  for (var i = 0; i < parts.length; i++) {
-    var part = stripTags(parts[i]).trim();
-    if (!part) continue;
-
-    // Маркер
-    if (/(?:добав|постав|сдела|добавь)/i.test(part) && /опрос/i.test(part)) continue;
-
-    // Вопрос
-    var qMatch = /^(?:Заголовок\s+опроса|Вопрос)\s*:?\s*(.+)$/i.exec(part);
-    if (qMatch && !question) {
-      question = qMatch[1].trim();
-      continue;
-    }
-
-    // Ответ
-    var aMatch = /^Ответ\s*\d*\s*:?\s*(.+)$/i.exec(part);
-    if (aMatch) {
-      var icon = extractIconAndText(aMatch[1].trim());
+  const parts = innerM[1].split(/<br\s*\/?>/i);
+  let question = null;
+  const answers = [];
+  let hasMissingEmoji = false;
+  for (const part of parts) {
+    const t = stripTags(part).trim();
+    if (!t) continue;
+    if (/(?:добав|постав|сдела|добавь)/i.test(t) && /опрос/i.test(t)) continue;
+    const qM = /^(?:Заголовок\s+опроса|Вопрос)\s*:?\s*(.+)$/i.exec(t);
+    if (qM && !question) { question = qM[1].trim(); continue; }
+    const aM = /^Ответ\s*\d*\s*:?\s*(.+)$/i.exec(t);
+    if (aM) {
+      const icon = extractIconAndText(aM[1].trim());
       if (icon) answers.push({ icon: icon.icon, text: icon.text });
       else hasMissingEmoji = true;
-      continue;
     }
   }
-
-  return { question: question, answers: answers, hasMissingEmoji: hasMissingEmoji };
+  return { question, answers, hasMissingEmoji };
 }
 
 function processSurveysPass(input) {
-  var matches = [];
-  var m;
+  const matches = [];
+  let m;
   SURVEY_MARKER_RE.lastIndex = 0;
-  while ((m = SURVEY_MARKER_RE.exec(input)) !== null) {
-    matches.push({ start: m.index, end: SURVEY_MARKER_RE.lastIndex });
-  }
+  while ((m = SURVEY_MARKER_RE.exec(input)) !== null) matches.push({ start: m.index, end: SURVEY_MARKER_RE.lastIndex });
 
-  for (var i = matches.length - 1; i >= 0; i--) {
-    var mrk = matches[i];
-    var enc = findEnclosingP(input, mrk.start);
-    if (!enc) continue;
-    if (enc.start > mrk.start || enc.end < mrk.end) continue;
-
-    var enclosingText = input.slice(enc.start, enc.end);
-    var isCompact = /<br\s*\/?>/i.test(enclosingText);
-
-    var result, replaceStart = enc.start, replaceEnd;
-
-    if (isCompact) {
-      result = tryProcessCompact(enclosingText);
-      replaceEnd = enc.end;
-    } else {
-      result = tryProcessExpanded(input, enc);
-      replaceEnd = result.endOfBlock;
-    }
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const mrk = matches[i];
+    const enc = findEnclosingP(input, mrk.start);
+    if (!enc || enc.start > mrk.start || enc.end < mrk.end) continue;
+    const encText = input.slice(enc.start, enc.end);
+    const isCompact = /<br\s*\/?>/i.test(encText);
+    let result, rStart = enc.start, rEnd;
+    if (isCompact) { result = tryProcessCompact(encText); rEnd = enc.end; }
+    else { result = tryProcessExpanded(input, enc); rEnd = result.endOfBlock; }
 
     if (!result || !result.question || !result.answers || result.answers.length < 2) {
-      var cmt = '<!-- НЕ РАСПОЗНАНО: опрос — не удалось собрать вопрос и ответы. Оставить как есть и уточнить у редактора -->\n\n';
-      input = input.slice(0, enc.start) + cmt + input.slice(enc.start);
+      addWarning(
+        'survey-parse',
+        'Опрос не собран: не найдены вопрос и ответы. Блок оставлен без изменений.',
+        buildSnippet(encText)
+      );
       continue;
     }
-
     if (result.hasMissingEmoji) {
-      var cmt2 = '<!-- В ОПРОСЕ НЕТ ЭМОДЗИ У ЧАСТИ ОТВЕТОВ: запросить у редактора -->\n\n';
-      input = input.slice(0, enc.start) + cmt2 + input.slice(enc.start);
+      addWarning(
+        'survey-emoji',
+        'В опросе у части ответов нет эмодзи. Блок оставлен без изменений.',
+        buildSnippet(encText)
+      );
       continue;
     }
-
-    var json = buildSurveyJson(result.question, result.answers);
-    input = input.slice(0, replaceStart) + json + input.slice(replaceEnd);
+    input = input.slice(0, rStart) + buildSurveyJson(result.question, result.answers) + input.slice(rEnd);
   }
-
   return input;
 }
 
 /* =========================================================
-   6. Основной пайплайн
+   7. Пайплайн
    ========================================================= */
 
 function processInput(input) {
-  var out = processProductsPass(input);
+  currentWarnings = [];
+  let out = processHlBlocks(input);
+  out = processTypeC(out);
+  out = processTypeD(out);
   out = processSurveysPass(out);
   return out;
 }
 
 /* =========================================================
-   7. UI
+   8. UI
    ========================================================= */
 
+function pluralWarn(n) {
+  const n10 = n % 10, n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return 'предупреждение';
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return 'предупреждения';
+  return 'предупреждений';
+}
+
 function run() {
-  var status = document.getElementById('status');
+  const status = document.getElementById('status');
   try {
-    var result = processInput(inputEditor.ta.value);
+    const result = processInput(inputEditor.ta.value);
     outputEditor.ta.value = result;
     outputEditor.refresh();
-    status.textContent = '✅ Готово!';
-    status.className = 'status ok';
+    renderWarnings(currentWarnings);
+    if (currentWarnings.length === 0) {
+      status.textContent = '✅ Готово!';
+      status.className = 'status ok';
+    } else {
+      status.textContent = '⚠️ Готово, но есть ' + currentWarnings.length + ' ' + pluralWarn(currentWarnings.length) + ' — см. ниже';
+      status.className = 'status err';
+    }
   } catch (e) {
     status.textContent = '❌ Ошибка: ' + e.message;
     status.className = 'status err';
+    renderWarnings([]);
   }
 }
 
 function copyOutput() {
-  var ta = outputEditor.ta;
+  const ta = outputEditor.ta;
   ta.select();
   try {
     document.execCommand('copy');
-    var status = document.getElementById('status');
+    const status = document.getElementById('status');
     status.textContent = '📋 Скопировано в буфер обмена';
     status.className = 'status ok';
   } catch (e) {}
@@ -640,11 +812,10 @@ function copyOutput() {
 }
 
 function clearAll() {
-  inputEditor.ta.value = '';
-  inputEditor.refresh();
-  outputEditor.ta.value = '';
-  outputEditor.refresh();
+  inputEditor.ta.value = ''; inputEditor.refresh();
+  outputEditor.ta.value = ''; outputEditor.refresh();
   document.getElementById('status').textContent = '';
+  renderWarnings([]);
 }
 </script>
 </body>
