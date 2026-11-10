@@ -45,7 +45,7 @@
     caret-color: var(--text); resize: none; z-index: 2; overflow: auto;
   }
   .editor textarea::placeholder { color: var(--placeholder); }
-  .editor textarea::selection { background: rgba(108, 92, 231, 0.4); }
+  .editor textarea::selection { background: rgba(108, 92, 231, 0.55); }
   .editor pre { z-index: 1; overflow: hidden; color: var(--text); pointer-events: none; }
   .editor pre code { font: inherit; color: inherit; }
   .tok-bracket { color: var(--tok-bracket); }
@@ -89,7 +89,12 @@
     padding: 12px 16px; margin-bottom: 8px; border-radius: 6px;
     background: var(--panel-bg); border-left: 3px solid var(--text-muted);
     font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
   }
+  .warning-item:hover { background: #252525; }
+  .warning-item:active { background: #2a2a2a; }
   .warning-item.error { border-left-color: var(--err); }
   .warning-item.warning { border-left-color: var(--warn); }
   .warning-item .warn-msg { color: var(--text); line-height: 1.5; }
@@ -101,6 +106,13 @@
     white-space: pre-wrap; word-break: break-word;
     max-height: 80px; overflow: auto;
   }
+  .warning-item .warn-hint {
+    margin-top: 6px; font-size: 11px;
+    color: var(--text-muted); opacity: 0.55;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .warning-item:hover .warn-hint { opacity: 1; color: var(--accent); }
+
   @media (max-width: 768px) {
     .panels { flex-direction: column; }
     .editor { min-height: 250px; }
@@ -141,32 +153,68 @@
 <script>
 /* ============ 0. Предупреждения ============ */
 let currentWarnings = [];
-function addWarning(type, message, snippet) {
-  currentWarnings.push({ type, message, snippet: snippet || '' });
+function addWarning(type, message, snippet, searchText) {
+  currentWarnings.push({ type, message, snippet: snippet || '', searchText: searchText || '' });
 }
 function buildSnippet(text, maxLen = 100) {
   if (!text) return '';
   const clean = text.replace(/\s+/g, ' ').trim();
   return clean.length > maxLen ? clean.slice(0, maxLen) + '…' : clean;
 }
+function buildSearchText(raw, maxLen = 60) {
+  if (!raw) return '';
+  const trimmed = raw.trimStart();
+  return trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed;
+}
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 function renderWarnings(warnings) {
   const panel = document.getElementById('warnings');
-  if (!warnings || warnings.length === 0) {
-    panel.innerHTML = ''; panel.classList.remove('show'); return;
-  }
-  const items = warnings.map(w => {
+  if (!warnings || warnings.length === 0) { panel.innerHTML = ''; panel.classList.remove('show'); return; }
+  const items = warnings.map((w, idx) => {
     const sev = (w.type === 'hl-none' || w.type === 'survey-parse') ? 'error' : 'warning';
-    let html = '<div class="warning-item ' + sev + '">';
+    let html = '<div class="warning-item ' + sev + '" onclick="focusWarning(' + idx + ')">';
     html += '<div class="warn-msg">' + escapeHtml(w.message) + '</div>';
     if (w.snippet) html += '<div class="warn-context">' + escapeHtml(w.snippet) + '</div>';
+    if (w.searchText) html += '<div class="warn-hint">🔍 Нажмите, чтобы найти в исходнике</div>';
     return html + '</div>';
   }).join('');
   panel.innerHTML = '<div class="warnings-title">⚠️ Предупреждения (' + warnings.length + ')' +
     '<button class="warnings-close" onclick="renderWarnings([])" title="Закрыть">×</button></div>' + items;
   panel.classList.add('show');
+}
+function focusWarning(idx) {
+  const w = currentWarnings[idx];
+  if (!w || !w.searchText) return;
+  const ta = inputEditor.ta;
+  const value = ta.value;
+  let pos = value.indexOf(w.searchText);
+  let len = w.searchText.length;
+  if (pos === -1) {
+    for (let cut = 40; cut >= 10; cut -= 10) {
+      const short = w.searchText.slice(0, cut);
+      pos = value.indexOf(short);
+      if (pos !== -1) { len = short.length; break; }
+    }
+  }
+  if (pos === -1) {
+    const fb = w.snippet.replace(/…$/, '');
+    if (fb) { pos = value.indexOf(fb); if (pos !== -1) len = fb.length; }
+  }
+  if (pos === -1) {
+    const status = document.getElementById('status');
+    status.textContent = '⚠️ Фрагмент не найден в исходнике (возможно, уже изменён)';
+    status.className = 'status err';
+    return;
+  }
+  ta.focus();
+  ta.setSelectionRange(pos, pos + len);
+  const before = value.slice(0, pos);
+  const line = before.split('\n').length - 1;
+  ta.scrollTop = Math.max(0, line * 19.5 - ta.clientHeight / 2);
+  const pre = ta.previousElementSibling;
+  if (pre) { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
 }
 
 /* ============ 1. Подсветка ============ */
@@ -254,7 +302,6 @@ function extractIconAndText(text) {
   if (m) return { icon: m[1], text: (m[2] || '').trim() };
   return null;
 }
-/* Разрешаем служебные атрибуты у <a>. Блокируют карточку только data-*, onclick, on*, style */
 function parseHrefOnly(attrs) {
   const cleaned = attrs.replace(/\s+(?:rel|target|class|id|title|role|aria-[a-z-]+|download|referrerpolicy)="[^"]*"/gi, '').trim();
   const m = /^href="([^"]*)"$/.exec(cleaned);
@@ -262,12 +309,14 @@ function parseHrefOnly(attrs) {
 }
 
 /* ============ 3. Тип A/B ============ */
-/* label: бирка + эмодзи, с <strong> или без, допускает атрибуты в <strong> и отсутствие пробела */
 const LABEL_REGEX = /<p\s+grade="primary"\s*>\s*(?:<strong\b[^>]*>\s*)?[Бб]ирка\s*([^\p{L}\p{N}\s]+)\s*(?:<\/strong>\s*)?<\/p>/ui;
 const EMPTY_P_REGEX = /<p\b[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>/g;
 
+/* Маркер: <p>...<coloration>...КАРТОЧК...ТОВАР...</coloration>...</p> */
+const MARKER_REGEX = /<p\s+grade="primary"\s*>\s*<coloration[^>]*>[^<]*?КАРТОЧК[^<]*?<\/coloration>\s*<\/p>/giu;
+const EDITOR_PIC_REGEX = /<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g;
+
 function parseCardParts(pre, titleHtml, post) {
-  /* image — сохраняем формат */
   let src = null, imageFormat = null;
   let imgM = /<image\s+src="([^"]*)"\s*\/>/.exec(pre);
   if (imgM) { src = imgM[1]; imageFormat = 'self'; }
@@ -275,20 +324,16 @@ function parseCardParts(pre, titleHtml, post) {
     imgM = /<image\s+src="([^"]*)"\s*><\/image>/.exec(pre);
     if (imgM) { src = imgM[1]; imageFormat = 'closed'; }
   }
-
-  /* label */
   let label = null;
   const labelM = LABEL_REGEX.exec(pre);
   if (labelM) label = labelM[1].trim();
 
-  /* pre должен быть пуст после удаления image, label и пустых <p> */
   let preClean = pre;
   if (imgM) preClean = preClean.replace(imgM[0], '');
   if (labelM) preClean = preClean.replace(labelM[0], '');
   preClean = preClean.replace(EMPTY_P_REGEX, '');
   if (preClean.replace(/\s+/g, '').length > 0) return null;
 
-  /* price */
   let price = null, link = null, postClean = post;
   const priceM = /<p\s+grade="primary"\s*>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/g;
   const priceMatches = [];
@@ -304,7 +349,6 @@ function parseCardParts(pre, titleHtml, post) {
     link = href;
     postClean = postClean.slice(0, chosen.start) + postClean.slice(chosen.end);
   } else {
-    /* fallback: цена в конце <p> с описанием через <br /><br /> */
     const fbM = /<p\s+grade="primary"\s*>([\s\S]*?)<br\s*\/?>\s*<br\s*\/?>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/.exec(postClean);
     if (!fbM) return null;
     price = fbM[3].trim();
@@ -316,13 +360,11 @@ function parseCardParts(pre, titleHtml, post) {
     postClean = postClean.slice(0, fbM.index) + replacement + postClean.slice(fbM.index + fbM[0].length);
   }
 
-  /* descriptions */
   const descParts = [];
   const descP = /<p\s+grade="primary"\s*>([\s\S]*?)<\/p>/g;
   let dm;
   while ((dm = descP.exec(postClean)) !== null) descParts.push(dm[1].trim());
 
-  /* post должен быть пуст */
   let postFinal = postClean;
   descP.lastIndex = 0;
   while ((dm = descP.exec(postClean)) !== null) postFinal = postFinal.replace(dm[0], '');
@@ -333,8 +375,8 @@ function parseCardParts(pre, titleHtml, post) {
 }
 
 function parseHlBlock(content) {
-  content = content.replace(/<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
-  content = content.replace(/<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
+  content = content.replace(MARKER_REGEX, '');
+  content = content.replace(EDITOR_PIC_REGEX, '');
 
   const h3Regex = /<h3\b([^>]*)>([\s\S]*?)<\/h3>/g;
   const h3Matches = [];
@@ -366,31 +408,17 @@ function renderImage(src, format, indent) {
     ? ind + '<image src="' + s + '"></image>'
     : ind + '<image src="' + s + '" />';
 }
-
 function renderCardSimple(c) {
   const img = renderImage(c.src, c.imageFormat || 'self', 1);
   const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
-  return [
-    '<product-card' + labelAttr + '>',
-    img,
-    '    <title>' + stripStrong(c.title) + '</title>',
-    '    <price link-shop="' + c.link + '">' + c.price + '</price>',
-    '</product-card>'
-  ].join('\n');
+  return ['<product-card' + labelAttr + '>', img, '    <title>' + stripStrong(c.title) + '</title>', '    <price link-shop="' + c.link + '">' + c.price + '</price>', '</product-card>'].join('\n');
 }
 function renderCardWithDesc(c) {
   const img = renderImage(c.src, c.imageFormat || 'self', 1);
   const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
-  const lines = [
-    '<product-card' + labelAttr + '>',
-    img,
-    '    <title>' + stripStrong(c.title) + '</title>',
-    '    <description>'
-  ];
+  const lines = ['<product-card' + labelAttr + '>', img, '    <title>' + stripStrong(c.title) + '</title>', '    <description>'];
   for (const p of c.description) lines.push('        <p>' + p + '</p>');
-  lines.push('    </description>');
-  lines.push('    <price link-shop="' + c.link + '">' + c.price + '</price>');
-  lines.push('</product-card>');
+  lines.push('    </description>', '    <price link-shop="' + c.link + '">' + c.price + '</price>', '</product-card>');
   return lines.join('\n');
 }
 function renderGridAB(cards) {
@@ -399,10 +427,7 @@ function renderGridAB(cards) {
     const img = renderImage(c.src, c.imageFormat || 'self', 2);
     const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
     lines.push('', '    <product-card' + labelAttr + '>');
-    lines.push(img);
-    lines.push('        <title>' + stripStrong(c.title) + '</title>');
-    lines.push('        <price link-shop="' + c.link + '">' + c.price + '</price>');
-    lines.push('    </product-card>');
+    lines.push(img, '        <title>' + stripStrong(c.title) + '</title>', '        <price link-shop="' + c.link + '">' + c.price + '</price>', '    </product-card>');
   }
   lines.push('</product-card-grid>');
   return lines.join('\n');
@@ -412,31 +437,31 @@ function flushNoDesc(cards) {
   if (cards.length % 2 === 0) return renderGridAB(cards);
   return renderGridAB(cards.slice(0, -1)) + '\n\n' + renderCardSimple(cards[cards.length - 1]);
 }
-
 function processHlContent(content) {
-  const hasMarker = /КАРТОЧК[ИА]\s+ТОВАР/.test(content);
+  const hasMarker = /КАРТОЧК[ИА]\s+ТОВАР/i.test(content);
   const parsed = parseHlBlock(content);
   if (!parsed) {
     if (hasMarker) {
-      addWarning('hl-none', 'Не удалось собрать карточки в <hl>. Блок оставлен без изменений.', buildSnippet(content));
+      addWarning('hl-none',
+        'Не удалось собрать карточки в <hl>. Блок оставлен без изменений.',
+        buildSnippet(content), buildSearchText(content));
       return { output: null };
     }
     return null;
   }
   if (parsed.error) {
-    addWarning('hl-none', 'Карточка «' + parsed.h3 + '» не собрана — весь <hl> оставлен без изменений.', buildSnippet(content));
+    addWarning('hl-none',
+      'Карточка «' + parsed.h3 + '» не собрана — весь <hl> оставлен без изменений.',
+      buildSnippet(content), buildSearchText(content));
     return { output: null };
   }
-
   const blocks = [];
   let buffer = [];
   for (const c of parsed.cards) {
     if (c.description.length > 0) {
       if (buffer.length > 0) { blocks.push(flushNoDesc(buffer)); buffer = []; }
       blocks.push(renderCardWithDesc(c));
-    } else {
-      buffer.push(c);
-    }
+    } else buffer.push(c);
   }
   if (buffer.length > 0) blocks.push(flushNoDesc(buffer));
   return { output: blocks.join('\n\n') };
@@ -451,18 +476,10 @@ function processHlBlocks(input) {
 
 /* ============ 4. Тип C ============ */
 const TYPE_C_RE = /<h3\b[^>]*>([\s\S]*?)<\/h3>\s*<p\b[^>]*>([\s\S]*?)<\/p>\s*<p\b[^>]*>\s*\{([^}]+)\}\(([^)]+)\)\s*<\/p>/g;
-function renderTypeC(c) {
-  return ['<product-card>', '    <image src=""></image>', '    <title>' + stripStrong(c.title) + '</title>', '    <price link-shop="' + c.link + '">' + c.price + '</price>', '</product-card>'].join('\n');
-}
+function renderTypeC(c) { return ['<product-card>', '    <image src=""></image>', '    <title>' + stripStrong(c.title) + '</title>', '    <price link-shop="' + c.link + '">' + c.price + '</price>', '</product-card>'].join('\n'); }
 function renderGridC(cards) {
   const lines = ['<product-card-grid>'];
-  for (const c of cards) {
-    lines.push('', '    <product-card>');
-    lines.push('        <image src=""></image>');
-    lines.push('        <title>' + stripStrong(c.title) + '</title>');
-    lines.push('        <price link-shop="' + c.link + '">' + c.price + '</price>');
-    lines.push('    </product-card>');
-  }
+  for (const c of cards) lines.push('', '    <product-card>', '        <image src=""></image>', '        <title>' + stripStrong(c.title) + '</title>', '        <price link-shop="' + c.link + '">' + c.price + '</price>', '    </product-card>');
   lines.push('</product-card-grid>');
   return lines.join('\n');
 }
@@ -472,12 +489,9 @@ function renderGroupC(cards) {
   return renderGridC(cards.slice(0, -1)) + '\n\n' + renderTypeC(cards[cards.length - 1]);
 }
 function processTypeC(input) {
-  const matches = [];
-  let m;
+  const matches = []; let m;
   TYPE_C_RE.lastIndex = 0;
-  while ((m = TYPE_C_RE.exec(input)) !== null) {
-    matches.push({ start: m.index, end: TYPE_C_RE.lastIndex, title: m[1].trim(), price: m[2].trim(), link: m[4] });
-  }
+  while ((m = TYPE_C_RE.exec(input)) !== null) matches.push({ start: m.index, end: TYPE_C_RE.lastIndex, title: m[1].trim(), price: m[2].trim(), link: m[4] });
   if (matches.length === 0) return input;
   const groups = [];
   let current = [matches[0]];
@@ -507,15 +521,9 @@ function processTypeD(input) {
   return input.replace(TYPE_D_RE, (match, h2Attrs, h2Inner, labelAttrs, labelContent, titleAttrs, titleContent, priceAttrs, priceContent, imgAttrs, caption, descAttrs, descContent) => {
     let label = null, titleText, priceText;
     if (labelAttrs !== undefined && labelContent !== undefined && looksLikeLabel(labelContent)) {
-      label = stripTags(labelContent).trim();
-      titleText = titleContent.trim();
-      priceText = priceContent.trim();
-    } else if (labelAttrs !== undefined && labelContent !== undefined) {
-      return match;
-    } else {
-      titleText = titleContent.trim();
-      priceText = priceContent.trim();
-    }
+      label = stripTags(labelContent).trim(); titleText = titleContent.trim(); priceText = priceContent.trim();
+    } else if (labelAttrs !== undefined && labelContent !== undefined) return match;
+    else { titleText = titleContent.trim(); priceText = priceContent.trim(); }
     const capTrim = caption.trim();
     let capLink = '', capText = '';
     const linkM = /\{([^}]+)\}\(([^)]+)\)/.exec(capTrim);
@@ -530,16 +538,9 @@ function processTypeD(input) {
     if (capText) description = capText + (description ? ' ' + description : '');
     const lines = ['<h2' + h2Attrs + '>' + h2Inner + '</h2>', ''];
     const lAttr = label ? ' label="' + escapeAttr(label) + '"' : '';
-    lines.push('<product-card' + lAttr + '>');
-    lines.push('    <image src=""></image>');
-    lines.push('    <title>' + stripStrong(titleText) + '</title>');
-    if (description) {
-      lines.push('    <description>');
-      lines.push('        <p>' + description + '</p>');
-      lines.push('    </description>');
-    }
-    lines.push('    <price link-shop="' + link + '">' + priceClean + '</price>');
-    lines.push('</product-card>');
+    lines.push('<product-card' + lAttr + '>', '    <image src=""></image>', '    <title>' + stripStrong(titleText) + '</title>');
+    if (description) lines.push('    <description>', '        <p>' + description + '</p>', '    </description>');
+    lines.push('    <price link-shop="' + link + '">' + priceClean + '</price>', '</product-card>');
     return lines.join('\n');
   });
 }
@@ -557,21 +558,14 @@ function buildSurveyJson(question, answers) {
   const lines = ['{', '  "mode": "percent",', '  "answers": ['];
   for (let i = 0; i < answers.length; i++) {
     const a = answers[i];
-    lines.push('    {');
-    lines.push('      "icon": "' + escapeJson(a.icon) + '",');
-    lines.push('      "answer": "' + escapeJson(capitalizeFirst(a.text)) + '"');
-    lines.push('    }' + (i < answers.length - 1 ? ',' : ''));
+    lines.push('    {', '      "icon": "' + escapeJson(a.icon) + '",', '      "answer": "' + escapeJson(capitalizeFirst(a.text)) + '"', '    }' + (i < answers.length - 1 ? ',' : ''));
   }
-  lines.push('  ],');
-  lines.push('  "question": "' + escapeJson(question) + '",');
-  lines.push('  "needLogin": true');
-  lines.push('}');
+  lines.push('  ],', '  "question": "' + escapeJson(question) + '",', '  "needLogin": true', '}');
   return lines.join('\n');
 }
 function tryProcessExpanded(input, markerP) {
   let pos = markerP.end, question = null;
-  const answers = [];
-  let endOfBlock = pos;
+  const answers = []; let endOfBlock = pos;
   const pRe = /\s*<p([^>]*)>([\s\S]*?)<\/p>/y;
   while (true) {
     pRe.lastIndex = pos;
@@ -591,9 +585,7 @@ function tryProcessCompact(enclosingText) {
   const innerM = /<p[^>]*>([\s\S]*?)<\/p>/.exec(enclosingText);
   if (!innerM) return null;
   const parts = innerM[1].split(/<br\s*\/?>/i);
-  let question = null;
-  const answers = [];
-  let hasMissingEmoji = false;
+  let question = null; const answers = []; let hasMissingEmoji = false;
   for (const part of parts) {
     const t = stripTags(part).trim();
     if (!t) continue;
@@ -610,8 +602,7 @@ function tryProcessCompact(enclosingText) {
   return { question, answers, hasMissingEmoji };
 }
 function processSurveysPass(input) {
-  const matches = [];
-  let m;
+  const matches = []; let m;
   SURVEY_MARKER_RE.lastIndex = 0;
   while ((m = SURVEY_MARKER_RE.exec(input)) !== null) matches.push({ start: m.index, end: SURVEY_MARKER_RE.lastIndex });
   for (let i = matches.length - 1; i >= 0; i--) {
@@ -624,11 +615,11 @@ function processSurveysPass(input) {
     if (isCompact) { result = tryProcessCompact(encText); rEnd = enc.end; }
     else { result = tryProcessExpanded(input, enc); rEnd = result.endOfBlock; }
     if (!result || !result.question || !result.answers || result.answers.length < 2) {
-      addWarning('survey-parse', 'Опрос не собран: не найдены вопрос и ответы. Блок оставлен без изменений.', buildSnippet(encText));
+      addWarning('survey-parse', 'Опрос не собран: не найдены вопрос и ответы. Блок оставлен без изменений.', buildSnippet(encText), buildSearchText(encText));
       continue;
     }
     if (result.hasMissingEmoji) {
-      addWarning('survey-emoji', 'В опросе у части ответов нет эмодзи. Блок оставлен без изменений.', buildSnippet(encText));
+      addWarning('survey-emoji', 'В опросе у части ответов нет эмодзи. Блок оставлен без изменений.', buildSnippet(encText), buildSearchText(encText));
       continue;
     }
     input = input.slice(0, rStart) + buildSurveyJson(result.question, result.answers) + input.slice(rEnd);
@@ -660,13 +651,8 @@ function run() {
     outputEditor.ta.value = result;
     outputEditor.refresh();
     renderWarnings(currentWarnings);
-    if (currentWarnings.length === 0) {
-      status.textContent = '✅ Готово!';
-      status.className = 'status ok';
-    } else {
-      status.textContent = '⚠️ Готово, но есть ' + currentWarnings.length + ' ' + pluralWarn(currentWarnings.length) + ' — см. ниже';
-      status.className = 'status err';
-    }
+    if (currentWarnings.length === 0) { status.textContent = '✅ Готово!'; status.className = 'status ok'; }
+    else { status.textContent = '⚠️ Готово, но есть ' + currentWarnings.length + ' ' + pluralWarn(currentWarnings.length) + ' — см. ниже'; status.className = 'status err'; }
   } catch (e) {
     status.textContent = '❌ Ошибка: ' + e.message;
     status.className = 'status err';
