@@ -72,13 +72,11 @@
   .status.ok { color: var(--ok); }
   .status.err { color: var(--warn); }
 
-  /* === Панель предупреждений === */
   .warnings { margin-top: 16px; display: none; }
   .warnings.show { display: block; }
   .warnings-title {
     display: flex; align-items: center; justify-content: space-between;
-    font-size: 15px; font-weight: 600; margin-bottom: 12px;
-    color: var(--text);
+    font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text);
   }
   .warnings-close {
     background: transparent; border: none;
@@ -88,34 +86,21 @@
   }
   .warnings-close:hover { color: var(--text); background: rgba(255,255,255,0.05); }
   .warning-item {
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    border-radius: 6px;
-    background: var(--panel-bg);
-    border-left: 3px solid var(--text-muted);
+    padding: 12px 16px; margin-bottom: 8px; border-radius: 6px;
+    background: var(--panel-bg); border-left: 3px solid var(--text-muted);
     font-size: 13px;
   }
   .warning-item.error { border-left-color: var(--err); }
   .warning-item.warning { border-left-color: var(--warn); }
-  .warning-item .warn-msg {
-    color: var(--text);
-    line-height: 1.5;
-  }
-  .warning-item .warn-msg strong { color: var(--text); }
+  .warning-item .warn-msg { color: var(--text); line-height: 1.5; }
   .warning-item .warn-context {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: rgba(0,0,0,0.35);
-    border-radius: 4px;
+    margin-top: 8px; padding: 8px 10px;
+    background: rgba(0,0,0,0.35); border-radius: 4px;
     font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-    font-size: 12px;
-    color: var(--text-muted);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 80px;
-    overflow: auto;
+    font-size: 12px; color: var(--text-muted);
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 80px; overflow: auto;
   }
-
   @media (max-width: 768px) {
     .panels { flex-direction: column; }
     .editor { min-height: 250px; }
@@ -154,55 +139,38 @@
 <div class="warnings" id="warnings"></div>
 
 <script>
-/* =========================================================
-   0. Состояние предупреждений
-   ========================================================= */
-
+/* ============ 0. Предупреждения ============ */
 let currentWarnings = [];
-
 function addWarning(type, message, snippet) {
   currentWarnings.push({ type, message, snippet: snippet || '' });
 }
-
 function buildSnippet(text, maxLen = 100) {
   if (!text) return '';
   const clean = text.replace(/\s+/g, ' ').trim();
   return clean.length > maxLen ? clean.slice(0, maxLen) + '…' : clean;
 }
-
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
 function renderWarnings(warnings) {
   const panel = document.getElementById('warnings');
   if (!warnings || warnings.length === 0) {
-    panel.innerHTML = '';
-    panel.classList.remove('show');
-    return;
+    panel.innerHTML = ''; panel.classList.remove('show'); return;
   }
   const items = warnings.map(w => {
-    const severity = (w.type === 'hl-none' || w.type === 'survey-parse') ? 'error' : 'warning';
-    let html = '<div class="warning-item ' + severity + '">';
+    const sev = (w.type === 'hl-none' || w.type === 'survey-parse') ? 'error' : 'warning';
+    let html = '<div class="warning-item ' + sev + '">';
     html += '<div class="warn-msg">' + escapeHtml(w.message) + '</div>';
     if (w.snippet) html += '<div class="warn-context">' + escapeHtml(w.snippet) + '</div>';
-    html += '</div>';
-    return html;
+    return html + '</div>';
   }).join('');
-  panel.innerHTML =
-    '<div class="warnings-title">' +
-      '⚠️ Предупреждения (' + warnings.length + ')' +
-      '<button class="warnings-close" onclick="renderWarnings([])" title="Закрыть">×</button>' +
-    '</div>' + items;
+  panel.innerHTML = '<div class="warnings-title">⚠️ Предупреждения (' + warnings.length + ')' +
+    '<button class="warnings-close" onclick="renderWarnings([])" title="Закрыть">×</button></div>' + items;
   panel.classList.add('show');
 }
 
-/* =========================================================
-   1. Подсветка
-   ========================================================= */
-
-function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-
+/* ============ 1. Подсветка ============ */
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function highlightAttrs(attrs) {
   let out = ''; const re = /(\s+)([a-zA-Z_][\w:-]*)(\s*=\s*)("[^"]*")?/g; let last = 0, m;
   while ((m = re.exec(attrs)) !== null) {
@@ -214,25 +182,21 @@ function highlightAttrs(attrs) {
   }
   return out + esc(attrs.slice(last));
 }
-
 function highlightTag(tag) {
   const m = /^(<\/?)([a-zA-Z][\w:-]*)([\s\S]*?)(\/?>)$/.exec(tag);
   if (!m) return esc(tag);
   return '<span class="tok-bracket">' + esc(m[1]) + '</span><span class="tok-tag">' + esc(m[2]) + '</span>' + highlightAttrs(m[3]) + '<span class="tok-bracket">' + esc(m[4]) + '</span>';
 }
-
 function highlightJson(json) {
   let out = ''; const re = /"(?:\\.|[^"\\])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?/g; let last = 0, m;
   while ((m = re.exec(json)) !== null) {
     out += esc(json.slice(last, m.index));
-    const tok = m[0];
-    const cls = tok.charAt(0) === '"' ? (m[1] ? 'tok-json-key' : 'tok-json-str') : 'tok-json-num';
+    const tok = m[0]; const cls = tok.charAt(0) === '"' ? (m[1] ? 'tok-json-key' : 'tok-json-str') : 'tok-json-num';
     out += '<span class="' + cls + '">' + esc(tok) + '</span>';
     last = re.lastIndex;
   }
   return out + esc(json.slice(last));
 }
-
 function highlight(code) {
   let out = ''; let i = 0; const n = code.length;
   while (i < n) {
@@ -240,7 +204,7 @@ function highlight(code) {
       let end = code.indexOf('-->', i); end = end === -1 ? n : end + 3;
       out += '<span class="tok-comment">' + esc(code.slice(i, end)) + '</span>'; i = end; continue;
     }
-    if (code[i] === '{' && (i === 0 || /[\s\n]/.test(code[i - 1]))) {
+    if (code[i] === '{' && (i === 0 || /[\s\n]/.test(code[i-1]))) {
       let depth = 0, j = i, inStr = false, inEsc = false;
       for (; j < n; j++) {
         const ch = code[j];
@@ -261,7 +225,6 @@ function highlight(code) {
   }
   return out;
 }
-
 function attachEditor(textareaId, hlCodeId) {
   const ta = document.getElementById(textareaId);
   const pre = ta.previousElementSibling;
@@ -273,21 +236,17 @@ function attachEditor(textareaId, hlCodeId) {
   refresh();
   return { ta, refresh };
 }
-
 let inputEditor, outputEditor;
 document.addEventListener('DOMContentLoaded', () => {
   inputEditor = attachEditor('input', 'input-hl');
   outputEditor = attachEditor('output', 'output-hl');
 });
 
-/* =========================================================
-   2. Утилиты
-   ========================================================= */
-
+/* ============ 2. Утилиты ============ */
 function stripTags(html) { return html.replace(/<[^>]+>/g, ''); }
 function stripStrong(html) { return html.replace(/<\/?strong\b[^>]*>/gi, ''); }
-function escapeAttr(s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function escapeJson(s) { return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'); }
+function escapeAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeJson(s) { return s.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n').replace(/\r/g,'\\r').replace(/\t/g,'\\t'); }
 function capitalizeFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function extractIconAndText(text) {
   text = text.trim();
@@ -295,17 +254,20 @@ function extractIconAndText(text) {
   if (m) return { icon: m[1], text: (m[2] || '').trim() };
   return null;
 }
+/* Разрешаем служебные атрибуты у <a>. Блокируют карточку только data-*, onclick, on*, style */
 function parseHrefOnly(attrs) {
-  const cleaned = attrs.replace(/\s+(?:rel|target|class|id|title|role|aria-[a-z-]+)="[^"]*"/gi, '').trim();
+  const cleaned = attrs.replace(/\s+(?:rel|target|class|id|title|role|aria-[a-z-]+|download|referrerpolicy)="[^"]*"/gi, '').trim();
   const m = /^href="([^"]*)"$/.exec(cleaned);
   return m ? m[1] : null;
 }
 
-/* =========================================================
-   3. Типы A/B: <hl> + маркер
-   ========================================================= */
+/* ============ 3. Тип A/B ============ */
+/* label: бирка + эмодзи, с <strong> или без, допускает атрибуты в <strong> и отсутствие пробела */
+const LABEL_REGEX = /<p\s+grade="primary"\s*>\s*(?:<strong\b[^>]*>\s*)?[Бб]ирка\s*([^\p{L}\p{N}\s]+)\s*(?:<\/strong>\s*)?<\/p>/ui;
+const EMPTY_P_REGEX = /<p\b[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>/g;
 
 function parseCardParts(pre, titleHtml, post) {
+  /* image — сохраняем формат */
   let src = null, imageFormat = null;
   let imgM = /<image\s+src="([^"]*)"\s*\/>/.exec(pre);
   if (imgM) { src = imgM[1]; imageFormat = 'self'; }
@@ -314,17 +276,20 @@ function parseCardParts(pre, titleHtml, post) {
     if (imgM) { src = imgM[1]; imageFormat = 'closed'; }
   }
 
+  /* label */
   let label = null;
-  const labelM = /<p\s+grade="primary"\s*>\s*(?:<strong>\s*)?бирка\s+([^\p{L}\p{N}\s]+)\s*(?:<\/strong>\s*)?<\/p>/u.exec(pre);
+  const labelM = LABEL_REGEX.exec(pre);
   if (labelM) label = labelM[1].trim();
 
+  /* pre должен быть пуст после удаления image, label и пустых <p> */
   let preClean = pre;
   if (imgM) preClean = preClean.replace(imgM[0], '');
   if (labelM) preClean = preClean.replace(labelM[0], '');
+  preClean = preClean.replace(EMPTY_P_REGEX, '');
   if (preClean.replace(/\s+/g, '').length > 0) return null;
 
+  /* price */
   let price = null, link = null, postClean = post;
-
   const priceM = /<p\s+grade="primary"\s*>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/g;
   const priceMatches = [];
   let pm;
@@ -339,6 +304,7 @@ function parseCardParts(pre, titleHtml, post) {
     link = href;
     postClean = postClean.slice(0, chosen.start) + postClean.slice(chosen.end);
   } else {
+    /* fallback: цена в конце <p> с описанием через <br /><br /> */
     const fbM = /<p\s+grade="primary"\s*>([\s\S]*?)<br\s*\/?>\s*<br\s*\/?>\s*<a\s+([^>]*)>([\s\S]*?)<\/a>\s*<\/p>/.exec(postClean);
     if (!fbM) return null;
     price = fbM[3].trim();
@@ -350,14 +316,17 @@ function parseCardParts(pre, titleHtml, post) {
     postClean = postClean.slice(0, fbM.index) + replacement + postClean.slice(fbM.index + fbM[0].length);
   }
 
+  /* descriptions */
   const descParts = [];
   const descP = /<p\s+grade="primary"\s*>([\s\S]*?)<\/p>/g;
   let dm;
   while ((dm = descP.exec(postClean)) !== null) descParts.push(dm[1].trim());
 
+  /* post должен быть пуст */
   let postFinal = postClean;
   descP.lastIndex = 0;
   while ((dm = descP.exec(postClean)) !== null) postFinal = postFinal.replace(dm[0], '');
+  postFinal = postFinal.replace(EMPTY_P_REGEX, '');
   if (postFinal.replace(/\s+/g, '').length > 0) return null;
 
   return { src, imageFormat, label, title: titleHtml.trim(), price, link, description: descParts };
@@ -393,7 +362,9 @@ function parseHlBlock(content) {
 function renderImage(src, format, indent) {
   const ind = '    '.repeat(indent);
   const s = src === null ? '' : src;
-  return format === 'self' ? ind + '<image src="' + s + '" />' : ind + '<image src="' + s + '"></image>';
+  return format === 'closed'
+    ? ind + '<image src="' + s + '"></image>'
+    : ind + '<image src="' + s + '" />';
 }
 
 function renderCardSimple(c) {
@@ -407,7 +378,6 @@ function renderCardSimple(c) {
     '</product-card>'
   ].join('\n');
 }
-
 function renderCardWithDesc(c) {
   const img = renderImage(c.src, c.imageFormat || 'self', 1);
   const labelAttr = c.label ? ' label="' + escapeAttr(c.label) + '"' : '';
@@ -423,7 +393,6 @@ function renderCardWithDesc(c) {
   lines.push('</product-card>');
   return lines.join('\n');
 }
-
 function renderGridAB(cards) {
   const lines = ['<product-card-grid>'];
   for (const c of cards) {
@@ -438,7 +407,6 @@ function renderGridAB(cards) {
   lines.push('</product-card-grid>');
   return lines.join('\n');
 }
-
 function flushNoDesc(cards) {
   if (cards.length === 1) return renderCardSimple(cards[0]);
   if (cards.length % 2 === 0) return renderGridAB(cards);
@@ -450,27 +418,16 @@ function processHlContent(content) {
   const parsed = parseHlBlock(content);
   if (!parsed) {
     if (hasMarker) {
-      const srcMatch = content.match(/<image\s+src="([^"]*)"/);
-      const hint = srcMatch ? ' (image src="' + srcMatch[1] + '")' : '';
-      addWarning(
-        'hl-none',
-        'Не удалось собрать ни одной карточки в <hl>' + hint + '. Блок оставлен без изменений.',
-        buildSnippet(content)
-      );
+      addWarning('hl-none', 'Не удалось собрать карточки в <hl>. Блок оставлен без изменений.', buildSnippet(content));
       return { output: null };
     }
     return null;
   }
   if (parsed.error) {
-    addWarning(
-      'hl-none',
-      'Карточка «' + parsed.h3 + '» не собрана — весь <hl> оставлен без изменений.',
-      buildSnippet(content)
-    );
+    addWarning('hl-none', 'Карточка «' + parsed.h3 + '» не собрана — весь <hl> оставлен без изменений.', buildSnippet(content));
     return { output: null };
   }
 
-  /* Собираем все карточки, leftover не сохраняем — но предупреждаем */
   const blocks = [];
   let buffer = [];
   for (const c of parsed.cards) {
@@ -482,69 +439,21 @@ function processHlContent(content) {
     }
   }
   if (buffer.length > 0) blocks.push(flushNoDesc(buffer));
-
-  /* Проверяем, был ли в блоке нераспознанный контент */
-  let contentNoTech = content;
-  contentNoTech = contentNoTech.replace(/<p\s+grade="primary"\s*>\s*<coloration[^>]*>\s*КАРТОЧК[ИА]\s+ТОВАР\w*\s*<\/coloration>\s*<\/p>/g, '');
-  contentNoTech = contentNoTech.replace(/<p\s+grade="primary"\s*>\s*Картинка\s*\(ставит фоторедактор\)\s*<\/p>/g, '');
-
-  /* Пересчитываем: сколько текста ушло в карточки, сколько осталось */
-  const h3Ranges = [];
-  const h3Re = /<h3\b[^>]*>[\s\S]*?<\/h3>/g;
-  let hm;
-  while ((hm = h3Re.exec(contentNoTech)) !== null) h3Ranges.push([hm.index, h3Re.lastIndex]);
-
-  /* Простой эвристический признак: если после удаления карточных элементов
-     в contentNoTech что-то осталось непустое (не считая h3 и то, что между ними),
-     то часть контента потеряна. Это приблизительная проверка, но лучше, чем ничего. */
-  let between = '';
-  let lastEnd = 0;
-  for (const [s, e] of h3Ranges) {
-    between += contentNoTech.slice(lastEnd, s);
-    lastEnd = e;
-  }
-  between += contentNoTech.slice(lastEnd);
-  /* Убираем все <p grade="primary">...</p> и <image ...>, что тоже были частью карточек */
-  between = between
-    .replace(/<p\s+grade="primary"\s*>[\s\S]*?<\/p>/g, '')
-    .replace(/<image[^>]*>(?:[\s\S]*?<\/image>)?/g, '')
-    .replace(/\s+/g, '');
-
-  if (between.length > 0) {
-    addWarning(
-      'hl-partial',
-      'Часть содержимого <hl> не распознана как карточки и не попала в вывод. Проверьте исходник.',
-      buildSnippet(between)
-    );
-  }
-
   return { output: blocks.join('\n\n') };
 }
-
 function processHlBlocks(input) {
   return input.replace(/<hl>([\s\S]*?)<\/hl>/g, (match, content) => {
-    const result = processHlContent(content);
-    if (result === null) return match;
-    return result.output === null ? match : result.output;
+    const r = processHlContent(content);
+    if (r === null) return match;
+    return r.output === null ? match : r.output;
   });
 }
 
-/* =========================================================
-   4. Тип C: <h3> + <p>цена</p> + <p>{url}(url)</p>
-   ========================================================= */
-
+/* ============ 4. Тип C ============ */
 const TYPE_C_RE = /<h3\b[^>]*>([\s\S]*?)<\/h3>\s*<p\b[^>]*>([\s\S]*?)<\/p>\s*<p\b[^>]*>\s*\{([^}]+)\}\(([^)]+)\)\s*<\/p>/g;
-
 function renderTypeC(c) {
-  return [
-    '<product-card>',
-    '    <image src=""></image>',
-    '    <title>' + stripStrong(c.title) + '</title>',
-    '    <price link-shop="' + c.link + '">' + c.price + '</price>',
-    '</product-card>'
-  ].join('\n');
+  return ['<product-card>', '    <image src=""></image>', '    <title>' + stripStrong(c.title) + '</title>', '    <price link-shop="' + c.link + '">' + c.price + '</price>', '</product-card>'].join('\n');
 }
-
 function renderGridC(cards) {
   const lines = ['<product-card-grid>'];
   for (const c of cards) {
@@ -557,13 +466,11 @@ function renderGridC(cards) {
   lines.push('</product-card-grid>');
   return lines.join('\n');
 }
-
 function renderGroupC(cards) {
   if (cards.length === 1) return renderTypeC(cards[0]);
   if (cards.length % 2 === 0) return renderGridC(cards);
   return renderGridC(cards.slice(0, -1)) + '\n\n' + renderTypeC(cards[cards.length - 1]);
 }
-
 function processTypeC(input) {
   const matches = [];
   let m;
@@ -572,7 +479,6 @@ function processTypeC(input) {
     matches.push({ start: m.index, end: TYPE_C_RE.lastIndex, title: m[1].trim(), price: m[2].trim(), link: m[4] });
   }
   if (matches.length === 0) return input;
-
   const groups = [];
   let current = [matches[0]];
   for (let i = 1; i < matches.length; i++) {
@@ -582,7 +488,6 @@ function processTypeC(input) {
     else { groups.push(current); current = [matches[i]]; }
   }
   groups.push(current);
-
   for (let i = groups.length - 1; i >= 0; i--) {
     const g = groups[i];
     input = input.slice(0, g[0].start) + renderGroupC(g) + input.slice(g[g.length - 1].end);
@@ -590,19 +495,14 @@ function processTypeC(input) {
   return input;
 }
 
-/* =========================================================
-   5. Тип D: <h2> + label + title + price + <image><caption> + desc
-   ========================================================= */
-
+/* ============ 5. Тип D ============ */
 const TYPE_D_RE = /<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*(?:<p\b([^>]*)>([\s\S]*?)<\/p>\s*)?<p\b([^>]*)>([\s\S]*?)<\/p>\s*<p\b([^>]*)>([\s\S]*?)<\/p>\s*<image\b([^>]*)>\s*<caption>([\s\S]*?)<\/caption>\s*<\/image>\s*<p\b([^>]*)>([\s\S]*?)<\/p>/g;
-
 function looksLikeLabel(text) {
   const t = stripTags(text).trim();
   if (!t || t.length > 30 || /[.!?]$/.test(t)) return false;
   const w = t.split(/\s+/).filter(x => x.length > 0);
   return w.length >= 1 && w.length <= 2;
 }
-
 function processTypeD(input) {
   return input.replace(TYPE_D_RE, (match, h2Attrs, h2Inner, labelAttrs, labelContent, titleAttrs, titleContent, priceAttrs, priceContent, imgAttrs, caption, descAttrs, descContent) => {
     let label = null, titleText, priceText;
@@ -644,12 +544,8 @@ function processTypeD(input) {
   });
 }
 
-/* =========================================================
-   6. Опросы → JSON
-   ========================================================= */
-
+/* ============ 6. Опросы ============ */
 const SURVEY_MARKER_RE = /<coloration[^>]*>[^<]*?(?:добавить|поставить|сделать|добавь)[^<]*?опрос[^<]*?<\/coloration>/gi;
-
 function findEnclosingP(text, pos) {
   const pStart = text.lastIndexOf('<p', pos);
   if (pStart === -1) return null;
@@ -657,7 +553,6 @@ function findEnclosingP(text, pos) {
   if (pEnd === -1) return null;
   return { start: pStart, end: pEnd + 4 };
 }
-
 function buildSurveyJson(question, answers) {
   const lines = ['{', '  "mode": "percent",', '  "answers": ['];
   for (let i = 0; i < answers.length; i++) {
@@ -673,7 +568,6 @@ function buildSurveyJson(question, answers) {
   lines.push('}');
   return lines.join('\n');
 }
-
 function tryProcessExpanded(input, markerP) {
   let pos = markerP.end, question = null;
   const answers = [];
@@ -693,7 +587,6 @@ function tryProcessExpanded(input, markerP) {
   }
   return { question, answers, endOfBlock };
 }
-
 function tryProcessCompact(enclosingText) {
   const innerM = /<p[^>]*>([\s\S]*?)<\/p>/.exec(enclosingText);
   if (!innerM) return null;
@@ -716,13 +609,11 @@ function tryProcessCompact(enclosingText) {
   }
   return { question, answers, hasMissingEmoji };
 }
-
 function processSurveysPass(input) {
   const matches = [];
   let m;
   SURVEY_MARKER_RE.lastIndex = 0;
   while ((m = SURVEY_MARKER_RE.exec(input)) !== null) matches.push({ start: m.index, end: SURVEY_MARKER_RE.lastIndex });
-
   for (let i = matches.length - 1; i >= 0; i--) {
     const mrk = matches[i];
     const enc = findEnclosingP(input, mrk.start);
@@ -732,21 +623,12 @@ function processSurveysPass(input) {
     let result, rStart = enc.start, rEnd;
     if (isCompact) { result = tryProcessCompact(encText); rEnd = enc.end; }
     else { result = tryProcessExpanded(input, enc); rEnd = result.endOfBlock; }
-
     if (!result || !result.question || !result.answers || result.answers.length < 2) {
-      addWarning(
-        'survey-parse',
-        'Опрос не собран: не найдены вопрос и ответы. Блок оставлен без изменений.',
-        buildSnippet(encText)
-      );
+      addWarning('survey-parse', 'Опрос не собран: не найдены вопрос и ответы. Блок оставлен без изменений.', buildSnippet(encText));
       continue;
     }
     if (result.hasMissingEmoji) {
-      addWarning(
-        'survey-emoji',
-        'В опросе у части ответов нет эмодзи. Блок оставлен без изменений.',
-        buildSnippet(encText)
-      );
+      addWarning('survey-emoji', 'В опросе у части ответов нет эмодзи. Блок оставлен без изменений.', buildSnippet(encText));
       continue;
     }
     input = input.slice(0, rStart) + buildSurveyJson(result.question, result.answers) + input.slice(rEnd);
@@ -754,10 +636,7 @@ function processSurveysPass(input) {
   return input;
 }
 
-/* =========================================================
-   7. Пайплайн
-   ========================================================= */
-
+/* ============ 7. Пайплайн ============ */
 function processInput(input) {
   currentWarnings = [];
   let out = processHlBlocks(input);
@@ -767,17 +646,13 @@ function processInput(input) {
   return out;
 }
 
-/* =========================================================
-   8. UI
-   ========================================================= */
-
+/* ============ 8. UI ============ */
 function pluralWarn(n) {
   const n10 = n % 10, n100 = n % 100;
   if (n10 === 1 && n100 !== 11) return 'предупреждение';
   if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return 'предупреждения';
   return 'предупреждений';
 }
-
 function run() {
   const status = document.getElementById('status');
   try {
@@ -798,7 +673,6 @@ function run() {
     renderWarnings([]);
   }
 }
-
 function copyOutput() {
   const ta = outputEditor.ta;
   ta.select();
@@ -810,7 +684,6 @@ function copyOutput() {
   } catch (e) {}
   ta.blur();
 }
-
 function clearAll() {
   inputEditor.ta.value = ''; inputEditor.refresh();
   outputEditor.ta.value = ''; outputEditor.refresh();
